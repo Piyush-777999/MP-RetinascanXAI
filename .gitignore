@@ -1,0 +1,32 @@
+# Model weights — too large for Git, share via Google Drive
+*.pth
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+dist/
+.next/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Dataset — never commit patient data
+DataSet/
+train_images/
+test_images/
+*.csv
+
+# IDE
+.vscode/
+.idea/
+
+# Logs
+*.log

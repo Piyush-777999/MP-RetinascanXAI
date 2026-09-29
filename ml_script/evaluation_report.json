@@ -1,0 +1,28 @@
+{
+  "model": "RetinaScan-XAI ResNet-50 Fine-Tuned",
+  "dataset": "APTOS 2019 Blindness Detection",
+  "dataset_source": "https://www.kaggle.com/competitions/aptos2019-blindness-detection",
+  "validation_set": 733,
+  "overall_accuracy": 0.794,
+  "binary_referable_dr": {
+    "definition": "Positive = ICDR Level 2, 3, or 4 (requires specialist)",
+    "optimal_threshold": 0.1162,
+    "threshold_method": "Youden's J index on ROC curve (maximises sensitivity + specificity)",
+    "sensitivity": 0.9765,
+    "specificity": 0.892,
+    "ppv": 0.8609,
+    "npv": 0.9823,
+    "f1_score": 0.9151,
+    "auc_roc": 0.9783,
+    "confusion_matrix": {
+      "true_positive": 291,
+      "true_negative": 388,
+      "false_positive": 47,
+      "false_negative": 7
+    }
+  },
+  "sih_targets_met": {
+    "sensitivity_90_percent": true,
+    "specificity_85_percent": true
+  }
+}
