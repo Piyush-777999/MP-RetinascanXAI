@@ -59,73 +59,21 @@ export const lesionTypes = {
   microaneurysm: { label: "Microaneurysm",      color: "#ef4444", symbol: "MA"  },
   hemorrhage:    { label: "Hemorrhage",          color: "#f97316", symbol: "HE"  },
   hardExudate:   { label: "Hard Exudate",        color: "#eab308", symbol: "EX"  },
+  exudate:       { label: "Hard Exudate",        color: "#eab308", symbol: "EX"  },
   cottonWool:    { label: "Cotton Wool Spot",    color: "#a855f7", symbol: "CWS" },
   neovascular:   { label: "Neovascularization",  color: "#ec4899", symbol: "NV"  },
 };
 
-// x, y are percentages of image width/height — pins scale with image
-export const lesionsBySeverity = {
-  0: [],
-  1: [
-    { id: 1, type: "microaneurysm", x: 62, y: 48, confidence: 89 },
-    { id: 2, type: "microaneurysm", x: 58, y: 55, confidence: 82 },
-  ],
-  2: [
-    { id: 1, type: "microaneurysm", x: 62, y: 42, confidence: 92 },
-    { id: 2, type: "microaneurysm", x: 68, y: 48, confidence: 88 },
-    { id: 3, type: "microaneurysm", x: 55, y: 52, confidence: 85 },
-    { id: 4, type: "hemorrhage",    x: 72, y: 58, confidence: 94 },
-    { id: 5, type: "hemorrhage",    x: 48, y: 62, confidence: 90 },
-    { id: 6, type: "hardExudate",   x: 40, y: 55, confidence: 87 },
-    { id: 7, type: "hardExudate",   x: 35, y: 48, confidence: 83 },
-    { id: 8, type: "microaneurysm", x: 65, y: 65, confidence: 81 },
-  ],
-  3: [
-    { id: 1,  type: "hemorrhage",    x: 60, y: 40, confidence: 96 },
-    { id: 2,  type: "hemorrhage",    x: 72, y: 45, confidence: 94 },
-    { id: 3,  type: "hemorrhage",    x: 45, y: 55, confidence: 92 },
-    { id: 4,  type: "cottonWool",    x: 68, y: 60, confidence: 91 },
-    { id: 5,  type: "cottonWool",    x: 38, y: 48, confidence: 89 },
-    { id: 6,  type: "microaneurysm", x: 55, y: 68, confidence: 87 },
-    { id: 7,  type: "microaneurysm", x: 62, y: 72, confidence: 85 },
-    { id: 8,  type: "hardExudate",   x: 42, y: 58, confidence: 88 },
-    { id: 9,  type: "hardExudate",   x: 78, y: 52, confidence: 84 },
-    { id: 10, type: "hemorrhage",    x: 52, y: 35, confidence: 90 },
-  ],
-  4: [
-    { id: 1,  type: "neovascular",   x: 50, y: 45, confidence: 98 },
-    { id: 2,  type: "neovascular",   x: 62, y: 40, confidence: 96 },
-    { id: 3,  type: "hemorrhage",    x: 45, y: 55, confidence: 97 },
-    { id: 4,  type: "hemorrhage",    x: 70, y: 58, confidence: 95 },
-    { id: 5,  type: "hemorrhage",    x: 55, y: 68, confidence: 94 },
-    { id: 6,  type: "cottonWool",    x: 38, y: 62, confidence: 92 },
-    { id: 7,  type: "cottonWool",    x: 72, y: 50, confidence: 90 },
-    { id: 8,  type: "hardExudate",   x: 42, y: 48, confidence: 89 },
-    { id: 9,  type: "microaneurysm", x: 60, y: 35, confidence: 88 },
-    { id: 10, type: "microaneurysm", x: 68, y: 75, confidence: 86 },
-    { id: 11, type: "neovascular",   x: 55, y: 60, confidence: 94 },
-    { id: 12, type: "hemorrhage",    x: 48, y: 42, confidence: 93 },
-  ],
-};
-
-// Deterministic probability distribution per severity (sums to 100)
-export function getProbabilityDistribution(severity) {
-  const base = [1, 2, 3, 4, 5]; // filler values per grade
-  // predicted grade gets ~92%, neighbours get split of remaining
-  const dist = [0, 0, 0, 0, 0];
-  dist[severity] = 91 + (severity * 1.3) % 5; // deterministic 91-95
-  const remaining = 100 - dist[severity];
-  const others = [0, 1, 2, 3, 4].filter(i => i !== severity);
-  // adjacent grades get more
-  others.forEach((i, idx) => {
-    const dist_ = Math.abs(i - severity);
-    dist[i] = dist_ === 1 ? Math.round(remaining * 0.35) : Math.round(remaining * 0.1);
-  });
-  // normalize to exactly 100
-  const total = dist.reduce((a, b) => a + b, 0);
-  const diff = 100 - total;
-  dist[severity] += diff;
-  return dist;
+// Map backend lesion types to standard frontend types
+export function normalizeLesionType(type) {
+  if (!type) return 'microaneurysm';
+  const lower = String(type).toLowerCase();
+  if (lower === 'exudate' || lower === 'hardexudate') return 'hardExudate';
+  if (lower === 'microaneurysm' || lower === 'ma') return 'microaneurysm';
+  if (lower === 'hemorrhage' || lower === 'haemorrhage' || lower === 'hem') return 'hemorrhage';
+  if (lower === 'cottonwool' || lower === 'cws') return 'cottonWool';
+  if (lower === 'neovascular' || lower === 'nv') return 'neovascular';
+  return type;
 }
 
 // Compute anatomical region label from x,y coordinates

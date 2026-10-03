@@ -1,10 +1,8 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
-  lesionsBySeverity,
   lesionTypes,
-  getProbabilityDistribution,
+  normalizeLesionType,
   getLesionRegion,
-  severityColors,
 } from '../data.js';
 
 /* ── Design tokens ─────────────────────────────────────────────────────────── */
@@ -66,6 +64,54 @@ function getQuadrant(x, y) {
   return (y < 50 ? 'S' : 'I') + (x < 50 ? 'T' : 'N');
 }
 
+function parseLesion(lesion, idx) {
+  const normType = normalizeLesionType(lesion.type);
+  const lt = lesionTypes[normType] || lesionTypes.microaneurysm;
+  let x = 50;
+  let y = 50;
+
+  if (lesion.x != null && lesion.y != null) {
+    x = lesion.x;
+    y = lesion.y;
+  } else if (Array.isArray(lesion.bbox) && lesion.bbox.length === 4) {
+    const [x1, y1, x2, y2] = lesion.bbox;
+    const cx = (x1 + x2) / 2;
+    const cy = (y1 + y2) / 2;
+    if (x1 <= 1 && x2 <= 1 && y1 <= 1 && y2 <= 1) {
+      x = cx * 100;
+      y = cy * 100;
+    } else {
+      x = (cx / 512) * 100;
+      y = (cy / 512) * 100;
+    }
+  }
+
+  x = Math.max(0, Math.min(100, x));
+  y = Math.max(0, Math.min(100, y));
+
+  let confidence = null;
+  if (lesion.confidence != null) {
+    confidence = lesion.confidence <= 1
+      ? Math.round(lesion.confidence * 100)
+      : Math.round(lesion.confidence);
+  }
+
+  const area_px = lesion.area_px ?? lesion.area ?? null;
+  const id = lesion.id ?? (idx + 1);
+
+  return {
+    id,
+    type: normType,
+    rawType: lesion.type,
+    x,
+    y,
+    confidence,
+    area_px,
+    bbox: lesion.bbox,
+    lt,
+  };
+}
+
 export default function Results({
   navigate,
   patient,
@@ -74,6 +120,9 @@ export default function Results({
   setSelectedEye = () => {},
   heatmapUrl = '',
   uploadedImageUrl = '',
+  lesions: propLesions,
+  lesionSummary,
+  allProbs,
   onQueue,
 }) {
   const [showHeatmap,  setShowHeatmap]  = useState(true);
@@ -81,24 +130,43 @@ export default function Results({
   const [showRedFree,  setShowRedFree]  = useState(false);
   const [hoveredId,    setHoveredId]    = useState(null);
   const [bilateral,    setBilateral]    = useState(false);
+  const [imgError,     setImgError]     = useState(false);
+  const [heatmapError, setHeatmapError] = useState(false);
 
   const sev       = severity ?? patient?.severity ?? 2;
   const eye       = selectedEye || 'od';
-  const lesions   = lesionsBySeverity[sev] || [];
-  const probs     = getProbabilityDistribution(sev);
   const gradeInfo = GRADE_LABELS[sev] || GRADE_LABELS[2];
-  const conf      = patient?.confidence ?? (91 + sev * 1.4).toFixed(1);
+  const conf      = patient?.confidence != null ? patient.confidence : (91 + sev * 1.4).toFixed(1);
 
-  // Prefer real uploaded image; fall back to demo
-  const fundusPath  = uploadedImageUrl || `/images/img_${sev}_${eye}.jpg`;
+  const rawLesions = propLesions || patient?.lesions || [];
+  const lesions = useMemo(() => {
+    if (!Array.isArray(rawLesions)) return [];
+    return rawLesions.map((l, idx) => parseLesion(l, idx));
+  }, [rawLesions]);
+
+  const probs = useMemo(() => {
+    const raw = allProbs || patient?.all_probs;
+    if (Array.isArray(raw) && raw.length === 5) {
+      return raw.map(p => p <= 1 ? Math.round(p * 100) : Math.round(p));
+    }
+    const base = [0, 0, 0, 0, 0];
+    base[sev] = patient?.confidence ? Math.round(patient.confidence) : 95;
+    return base;
+  }, [allProbs, patient?.all_probs, sev, patient?.confidence]);
+
+  // Prefer real uploaded image; fall back cleanly to demo asset
+  const fundusPath  = uploadedImageUrl || patient?.imageUrl || `/images/img_${sev}_${eye}.jpg`;
   const heatmapPath = heatmapUrl
-    ? `http://localhost:8000${heatmapUrl}`
-    : `/images/heatmap_${sev}_${eye}.jpg`;
+    ? (heatmapUrl.startsWith('http') ? heatmapUrl : `http://localhost:8000${heatmapUrl}`)
+    : '';
 
   const presentTypes = LEGEND_TYPES.filter(t => lesions.some(l => l.type === t.type));
 
   const quadCounts = { ST: 0, SN: 0, IT: 0, IN: 0 };
-  lesions.forEach(l => { const q = getQuadrant(l.x, l.y); if (quadCounts[q] !== undefined) quadCounts[q]++; });
+  lesions.forEach(l => {
+    const q = getQuadrant(l.x, l.y);
+    if (quadCounts[q] !== undefined) quadCounts[q]++;
+  });
 
   const studyId  = patient?.id?.replace('#', '') || 'STUDY-DR88219';
   const patName  = patient?.fullName || patient?.name || 'Smt. Geeta Sharma';
@@ -200,7 +268,7 @@ export default function Results({
         <div>
           <div style={{ fontSize: 16, fontWeight: 700, color: D.text }}>{patName}</div>
           <div style={{ fontFamily: D.mono, fontSize: 10, color: D.muted, marginTop: 2 }}>
-            {patient?.age}Y / {patient?.gender === 'M' ? 'Male' : 'Female'} · {patient?.village || 'PHC Mandawar'}
+            {patient?.age ? `${patient.age}Y` : '58Y'} / {patient?.gender === 'M' ? 'Male' : 'Female'} · {patient?.village || 'PHC Mandawar'}
           </div>
         </div>
 
@@ -233,9 +301,9 @@ export default function Results({
           border: `1px solid ${sev >= 3 ? 'rgba(220,38,38,0.3)' : sev >= 2 ? 'rgba(234,88,12,0.25)' : 'rgba(34,197,94,0.2)'}`,
           fontFamily: D.mono, fontSize: 11, fontWeight: 700,
           color: sev >= 3 ? '#dc2626' : sev >= 2 ? '#ea580c' : '#22c55e',
-          maxWidth: 260,
+          maxWidth: 280,
         }}>
-          ⚡ {SEVERITY_ACTIONS[sev]}
+          ⚡ {patient?.action || SEVERITY_ACTIONS[sev] || 'Clinical Review Required'}
         </div>
 
         {/* Queue CTA */}
@@ -315,19 +383,34 @@ export default function Results({
               boxShadow: '0 0 0 1px rgba(255,255,255,0.06), 0 0 80px rgba(0,0,0,0.9)',
               flexShrink: 0,
             }}>
-              <img
-                src={fundusPath}
-                alt={`Retina Grade ${sev}`}
-                onError={e => { e.target.src = '/images/img_2_od.jpg'; }}
-                style={{
-                  width: '100%', height: '100%', objectFit: 'cover', display: 'block',
-                  filter: showRedFree ? 'sepia(1) saturate(0.3) hue-rotate(90deg) contrast(1.2)' : 'none',
-                }}
-              />
+              {imgError ? (
+                <div style={{
+                  width: '100%', height: '100%',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  background: '#111820', color: D.muted, fontFamily: D.mono, fontSize: 12, gap: 10,
+                }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#3a5068" strokeWidth="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                  <span>Image unavailable</span>
+                </div>
+              ) : (
+                <img
+                  src={fundusPath}
+                  alt={`Retina Grade ${sev}`}
+                  onError={() => setImgError(true)}
+                  style={{
+                    width: '100%', height: '100%', objectFit: 'cover', display: 'block',
+                    filter: showRedFree ? 'sepia(1) saturate(0.3) hue-rotate(90deg) contrast(1.2)' : 'none',
+                  }}
+                />
+              )}
 
-              {showHeatmap && (
+              {showHeatmap && heatmapPath && !heatmapError && (
                 <img src={heatmapPath} alt="Grad-CAM"
-                  onError={e => { e.target.style.display = 'none'; }}
+                  onError={() => setHeatmapError(true)}
                   style={{
                     position: 'absolute', inset: 0,
                     width: '100%', height: '100%', objectFit: 'cover',
@@ -336,9 +419,22 @@ export default function Results({
                 />
               )}
 
+              {/* Empty state badge on fundus */}
+              {showPins && lesions.length === 0 && (
+                <div style={{
+                  position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+                  background: 'rgba(5,13,20,0.88)', backdropFilter: 'blur(6px)',
+                  border: '1px solid rgba(34,197,94,0.3)', borderRadius: 20,
+                  padding: '6px 16px', fontFamily: D.mono, fontSize: 11,
+                  color: '#22c55e', pointerEvents: 'none', zIndex: 15,
+                }}>
+                  ✓ No lesions detected — healthy retina
+                </div>
+              )}
+
               {/* Pins */}
               {showPins && lesions.map((lesion, idx) => {
-                const lt    = lesionTypes[lesion.type] || lesionTypes.microaneurysm;
+                const lt    = lesion.lt;
                 const isHov = hoveredId === lesion.id;
                 return (
                   <div key={lesion.id}
@@ -383,12 +479,20 @@ export default function Results({
                           #{lesion.id < 10 ? '0' + lesion.id : lesion.id} {lt.label.toUpperCase()}
                         </div>
                         <div style={{ fontFamily: D.mono, fontSize: 10, color: D.sub }}>
-                          Conf: <strong style={{ color: D.text }}>{lesion.confidence}%</strong>
-                          &nbsp;&nbsp;Dim: <strong style={{ color: D.sub }}>{(lesion.confidence * 0.056).toFixed(1)}%</strong>
+                          {lesion.confidence != null && <>Conf: <strong style={{ color: D.text }}>{lesion.confidence}%</strong>&nbsp;&nbsp;</>}
+                          {lesion.area_px != null && <>Area: <strong style={{ color: D.text }}>{lesion.area_px} px²</strong></>}
                         </div>
                         <div style={{ fontFamily: D.mono, fontSize: 10, color: D.muted, marginTop: 2 }}>
-                          [{(lesion.x / 100).toFixed(2)}, {(lesion.y / 100).toFixed(2)}]
+                          {lesion.bbox ? `[${lesion.bbox.join(', ')}]` : `[${(lesion.x / 100).toFixed(2)}, ${(lesion.y / 100).toFixed(2)}]`}
                         </div>
+                        {/* Tooltip arrow */}
+                        <div style={{
+                          position: 'absolute', bottom: -5, left: '50%',
+                          width: 8, height: 8, background: 'rgba(5,13,20,0.96)',
+                          borderRight: `1px solid ${lt.color}60`,
+                          borderBottom: `1px solid ${lt.color}60`,
+                          transform: 'translateX(-50%) rotate(45deg)',
+                        }} />
                       </div>
                     )}
                   </div>
@@ -485,15 +589,37 @@ export default function Results({
               <span style={{ fontFamily: D.mono, fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', color: D.text }}>
                 INDEXED PATHOLOGICAL FINDINGS ({lesions.length})
               </span>
-              <span style={{ fontFamily: D.mono, fontSize: 9, color: D.teal }}>U-Net Segmentor (IDRiD)</span>
+              <span style={{ fontFamily: D.mono, fontSize: 9, color: D.teal }}>Morphological Segmentor</span>
             </div>
+
+            {/* Optional lesion summary strip */}
+            {lesionSummary && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 14, padding: '7px 20px',
+                background: 'rgba(255,255,255,0.02)', borderBottom: `1px solid ${D.border}`,
+                fontSize: 10, fontFamily: D.mono, color: D.sub, flexWrap: 'wrap',
+              }}>
+                {lesionSummary.microaneurysm_count != null && (
+                  <span>MA: <strong style={{ color: '#ef4444' }}>{lesionSummary.microaneurysm_count}</strong></span>
+                )}
+                {lesionSummary.hemorrhage_count != null && (
+                  <span>HE: <strong style={{ color: '#f97316' }}>{lesionSummary.hemorrhage_count}</strong></span>
+                )}
+                {(lesionSummary.exudate_count != null || lesionSummary.hard_exudate_count != null) && (
+                  <span>EX: <strong style={{ color: '#eab308' }}>{lesionSummary.exudate_count ?? lesionSummary.hard_exudate_count}</strong></span>
+                )}
+                {lesionSummary.total_lesion_area_px != null && (
+                  <span>Total Area: <strong style={{ color: D.teal }}>{lesionSummary.total_lesion_area_px} px²</strong></span>
+                )}
+              </div>
+            )}
 
             {/* Column headers */}
             <div style={{
-              display: 'grid', gridTemplateColumns: '28px 80px 1fr 90px 44px',
+              display: 'grid', gridTemplateColumns: '28px 90px 1fr 75px 50px',
               padding: '5px 20px', borderBottom: `1px solid ${D.border}`, flexShrink: 0,
             }}>
-              {['#', 'Finding', 'Region', 'Coords', 'Conf'].map(h => (
+              {['#', 'Finding', 'Region', 'Area', 'Conf'].map(h => (
                 <span key={h} style={{ fontFamily: D.mono, fontSize: 9, color: D.muted, letterSpacing: '0.07em', textTransform: 'uppercase' }}>{h}</span>
               ))}
             </div>
@@ -501,12 +627,12 @@ export default function Results({
             {/* Rows */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
               {lesions.length === 0 && (
-                <div style={{ padding: '32px 20px', textAlign: 'center', fontFamily: D.mono, fontSize: 12, color: D.muted }}>
-                  ✓ No lesions detected — Healthy fundus (Grade 0)
+                <div style={{ padding: '32px 20px', textAlign: 'center', fontFamily: D.mono, fontSize: 12, color: D.sub }}>
+                  ✓ No lesions detected — healthy retina
                 </div>
               )}
               {lesions.map(lesion => {
-                const lt    = lesionTypes[lesion.type] || lesionTypes.microaneurysm;
+                const lt    = lesion.lt;
                 const region = getLesionRegion(lesion.x, lesion.y);
                 const isHov  = hoveredId === lesion.id;
                 return (
@@ -514,7 +640,7 @@ export default function Results({
                     onMouseEnter={() => setHoveredId(lesion.id)}
                     onMouseLeave={() => setHoveredId(null)}
                     style={{
-                      display: 'grid', gridTemplateColumns: '28px 80px 1fr 90px 44px',
+                      display: 'grid', gridTemplateColumns: '28px 90px 1fr 75px 50px',
                       padding: '8px 20px', alignItems: 'center',
                       background: isHov ? 'rgba(0,212,170,0.07)' : 'transparent',
                       borderLeft: isHov ? `2px solid ${D.teal}` : '2px solid transparent',
@@ -527,18 +653,20 @@ export default function Results({
                       padding: '2px 8px', borderRadius: 4,
                       background: `${lt.color}20`, border: `1px solid ${lt.color}50`,
                       fontFamily: D.mono, fontSize: 10, fontWeight: 700, color: lt.color,
-                      whiteSpace: 'nowrap',
+                      whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>
-                      {lt.symbol}
+                      {lt.symbol} {lt.label}
                     </span>
                     <span style={{ fontFamily: D.mono, fontSize: 11, color: D.sub }}>{region}</span>
                     <span style={{ fontFamily: D.mono, fontSize: 10, color: D.muted }}>
-                      [{(lesion.x / 100).toFixed(2)}, {(lesion.y / 100).toFixed(2)}]
+                      {lesion.area_px != null ? `${lesion.area_px} px²` : '—'}
                     </span>
                     <span style={{
                       fontFamily: D.mono, fontSize: 11, fontWeight: 700,
-                      color: lesion.confidence >= 90 ? '#22c55e' : lesion.confidence >= 80 ? D.teal : '#f59e0b',
-                    }}>{lesion.confidence}%</span>
+                      color: lesion.confidence == null ? D.sub : lesion.confidence >= 90 ? '#22c55e' : lesion.confidence >= 80 ? D.teal : '#f59e0b',
+                    }}>
+                      {lesion.confidence != null ? `${lesion.confidence}%` : '—'}
+                    </span>
                   </div>
                 );
               })}

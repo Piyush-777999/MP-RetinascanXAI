@@ -1,10 +1,8 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
-  lesionsBySeverity,
   lesionTypes,
-  getProbabilityDistribution,
+  normalizeLesionType,
   getLesionRegion,
-  severityColors,
 } from '../data.js';
 
 /* ── Design tokens ─────────────────────────────────────────────────────────── */
@@ -45,8 +43,57 @@ function getQuadrant(x, y) {
   return vert + horiz; // ST SN IT IN
 }
 
-/* ── Inline CSS animation styles ─────────────────────────────────────────────
-   We inject a single <style> block once so we don't need a CSS file.     */
+/* ── Parse lesion coordinates and normalize attributes ─────────────────────── */
+function parseLesion(lesion, idx) {
+  const normType = normalizeLesionType(lesion.type);
+  const lt = lesionTypes[normType] || lesionTypes.microaneurysm;
+  let x = 50;
+  let y = 50;
+
+  if (lesion.x != null && lesion.y != null) {
+    x = lesion.x;
+    y = lesion.y;
+  } else if (Array.isArray(lesion.bbox) && lesion.bbox.length === 4) {
+    const [x1, y1, x2, y2] = lesion.bbox;
+    const cx = (x1 + x2) / 2;
+    const cy = (y1 + y2) / 2;
+    if (x1 <= 1 && x2 <= 1 && y1 <= 1 && y2 <= 1) {
+      x = cx * 100;
+      y = cy * 100;
+    } else {
+      // Standard 512x512 coordinate space
+      x = (cx / 512) * 100;
+      y = (cy / 512) * 100;
+    }
+  }
+
+  x = Math.max(0, Math.min(100, x));
+  y = Math.max(0, Math.min(100, y));
+
+  let confidence = null;
+  if (lesion.confidence != null) {
+    confidence = lesion.confidence <= 1
+      ? Math.round(lesion.confidence * 100)
+      : Math.round(lesion.confidence);
+  }
+
+  const area_px = lesion.area_px ?? lesion.area ?? null;
+  const id = lesion.id ?? (idx + 1);
+
+  return {
+    id,
+    type: normType,
+    rawType: lesion.type,
+    x,
+    y,
+    confidence,
+    area_px,
+    bbox: lesion.bbox,
+    lt,
+  };
+}
+
+/* ── Inline CSS animation styles ───────────────────────────────────────────── */
 const KEYFRAMES = `
   @keyframes pin-pulse {
     0%   { transform: translate(-50%,-50%) scale(1);   opacity: 0.8; }
@@ -56,10 +103,6 @@ const KEYFRAMES = `
   @keyframes pin-in {
     from { transform: translate(-50%,-50%) scale(0); opacity: 0; }
     to   { transform: translate(-50%,-50%) scale(1); opacity: 1; }
-  }
-  @keyframes row-highlight {
-    0%   { background: rgba(0,212,170,0.15); }
-    100% { background: transparent; }
   }
 `;
 
@@ -71,6 +114,10 @@ export default function Canvas({
   selectedEye = 'od',
   setSelectedEye = () => {},
   heatmapUrl = '',
+  uploadedImageUrl = '',
+  lesions: propLesions,
+  lesionSummary,
+  allProbs,
   onRefer,
   onBack,
 }) {
@@ -80,26 +127,47 @@ export default function Canvas({
   const [zoom,         setZoom]         = useState(100);
   const [hoveredId,    setHoveredId]    = useState(null);
   const [notes,        setNotes]        = useState('');
+  const [imgError,     setImgError]     = useState(false);
+  const [heatmapError, setHeatmapError] = useState(false);
   const listRef = useRef(null);
 
   const sev      = severity ?? patient?.severity ?? 2;
   const eye      = selectedEye || 'od';
-  const lesions  = lesionsBySeverity[sev] || [];
-  const probs    = getProbabilityDistribution(sev);
   const studyId  = patient?.id?.replace('#', '') || 'STUDY-' + (patient?.id || 'DR88219');
 
-  const fundusPath  = `/images/img_${sev}_${eye}.jpg`;
-  const heatmapPath = heatmapUrl || `/images/heatmap_${sev}_${eye}.jpg`;
+  const rawLesions = propLesions || patient?.lesions || [];
+  const lesions = useMemo(() => {
+    if (!Array.isArray(rawLesions)) return [];
+    return rawLesions.map((l, idx) => parseLesion(l, idx));
+  }, [rawLesions]);
+
+  const probs = useMemo(() => {
+    const raw = allProbs || patient?.all_probs;
+    if (Array.isArray(raw) && raw.length === 5) {
+      return raw.map(p => p <= 1 ? Math.round(p * 100) : Math.round(p));
+    }
+    const base = [0, 0, 0, 0, 0];
+    base[sev] = patient?.confidence ? Math.round(patient.confidence) : 95;
+    return base;
+  }, [allProbs, patient?.all_probs, sev, patient?.confidence]);
+
+  const fundusPath = uploadedImageUrl || patient?.imageUrl || `/images/img_${sev}_${eye}.jpg`;
+  const heatmapPath = heatmapUrl
+    ? (heatmapUrl.startsWith('http') ? heatmapUrl : `http://localhost:8000${heatmapUrl}`)
+    : '';
 
   // Quadrant counts
   const quadCounts = { ST: 0, SN: 0, IT: 0, IN: 0 };
-  lesions.forEach(l => { const q = getQuadrant(l.x, l.y); if (quadCounts[q] !== undefined) quadCounts[q]++; });
+  lesions.forEach(l => {
+    const q = getQuadrant(l.x, l.y);
+    if (quadCounts[q] !== undefined) quadCounts[q]++;
+  });
 
   // Present lesion types (for legend)
   const presentTypes = LEGEND_TYPES.filter(t => lesions.some(l => l.type === t.type));
 
-  const handleBack  = () => { if (onBack)  onBack();              else if (navigate) navigate('queue');    };
-  const handleRefer = () => { if (onRefer) onRefer();             else if (navigate) navigate('referral'); };
+  const handleBack  = () => { if (onBack)  onBack();  else if (navigate) navigate('queue');    };
+  const handleRefer = () => { if (onRefer) onRefer(); else if (navigate) navigate('referral'); };
 
   // Scroll findings table to highlighted row
   useEffect(() => {
@@ -156,6 +224,22 @@ export default function Canvas({
         }}>
           {studyId} · Eye: <strong style={{ color: D.teal }}>{eye.toUpperCase()} ({eye === 'od' ? 'Right' : 'Left'})</strong>
         </span>
+
+        {/* Eye selector */}
+        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', border: `1px solid ${D.border}`, borderRadius: 6, padding: 2, gap: 2 }}>
+          {['od', 'os'].map(e => (
+            <button key={e} onClick={() => setSelectedEye(e)} style={{
+              all: 'unset', cursor: 'pointer',
+              padding: '3px 10px', borderRadius: 4,
+              fontFamily: D.mono, fontSize: 10, fontWeight: 700,
+              background: eye === e ? 'rgba(0,212,170,0.15)' : 'transparent',
+              color: eye === e ? D.teal : D.muted,
+              border: eye === e ? '1px solid rgba(0,212,170,0.3)' : '1px solid transparent',
+            }}>
+              {e.toUpperCase()}
+            </button>
+          ))}
+        </div>
 
         {/* Spacer */}
         <div style={{ flex: 1 }} />
@@ -285,25 +369,40 @@ export default function Canvas({
               flexShrink: 0,
             }}>
               {/* Fundus base */}
-              <img
-                src={fundusPath}
-                alt={`Fundus OD Sev${sev}`}
-                onError={e => { e.target.src = '/images/img_2_od.jpg'; }}
-                style={{
-                  width: '100%', height: '100%', objectFit: 'cover',
-                  display: 'block',
-                  filter: [
-                    showRedFree ? 'sepia(1) saturate(0.3) hue-rotate(90deg) contrast(1.2)' : '',
-                  ].filter(Boolean).join(' ') || 'none',
-                }}
-              />
+              {imgError ? (
+                <div style={{
+                  width: '100%', height: '100%',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  background: '#111820', color: D.muted, fontFamily: D.mono, fontSize: 12, gap: 10,
+                }}>
+                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#3a5068" strokeWidth="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                    <circle cx="8.5" cy="8.5" r="1.5"/>
+                    <polyline points="21 15 16 10 5 21"/>
+                  </svg>
+                  <span>Image unavailable</span>
+                </div>
+              ) : (
+                <img
+                  src={fundusPath}
+                  alt={`Fundus ${eye.toUpperCase()} Sev${sev}`}
+                  onError={() => setImgError(true)}
+                  style={{
+                    width: '100%', height: '100%', objectFit: 'cover',
+                    display: 'block',
+                    filter: [
+                      showRedFree ? 'sepia(1) saturate(0.3) hue-rotate(90deg) contrast(1.2)' : '',
+                    ].filter(Boolean).join(' ') || 'none',
+                  }}
+                />
+              )}
 
               {/* Grad-CAM heatmap overlay */}
-              {showHeatmap && (
+              {showHeatmap && heatmapPath && !heatmapError && (
                 <img
                   src={heatmapPath}
                   alt="Grad-CAM"
-                  onError={e => { e.target.style.display = 'none'; }}
+                  onError={() => setHeatmapError(true)}
                   style={{
                     position: 'absolute', inset: 0,
                     width: '100%', height: '100%', objectFit: 'cover',
@@ -313,9 +412,22 @@ export default function Canvas({
                 />
               )}
 
+              {/* Empty state overlay on canvas */}
+              {showPins && lesions.length === 0 && (
+                <div style={{
+                  position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
+                  background: 'rgba(6,13,19,0.88)', backdropFilter: 'blur(6px)',
+                  border: '1px solid rgba(34,197,94,0.3)', borderRadius: 20,
+                  padding: '6px 16px', fontFamily: D.mono, fontSize: 11,
+                  color: '#22c55e', pointerEvents: 'none', zIndex: 15,
+                }}>
+                  ✓ No lesions detected — healthy retina
+                </div>
+              )}
+
               {/* Lesion pins */}
               {showPins && lesions.map((lesion, idx) => {
-                const lt = lesionTypes[lesion.type] || lesionTypes.microaneurysm;
+                const lt = lesion.lt;
                 const isHov = hoveredId === lesion.id;
                 return (
                   <div
@@ -381,17 +493,18 @@ export default function Canvas({
                           #{lesion.id < 10 ? '0' + lesion.id : lesion.id} {lt.label.toUpperCase()}
                         </div>
                         <div style={{ fontFamily: D.mono, fontSize: 10, color: D.sub }}>
-                          Conf: <strong style={{ color: D.text }}>{lesion.confidence}%</strong>
-                          &nbsp;&nbsp;Dim: <strong style={{ color: D.sub }}>{(lesion.confidence * 0.056).toFixed(1)}%</strong>
+                          {lesion.confidence != null && <>Conf: <strong style={{ color: D.text }}>{lesion.confidence}%</strong>&nbsp;&nbsp;</>}
+                          {lesion.area_px != null && <>Area: <strong style={{ color: D.text }}>{lesion.area_px} px²</strong></>}
                         </div>
                         <div style={{ fontFamily: D.mono, fontSize: 10, color: D.muted, marginTop: 2 }}>
-                          [{(lesion.x / 100).toFixed(2)}, {(lesion.y / 100).toFixed(2)}]
+                          {lesion.bbox ? `[${lesion.bbox.join(', ')}]` : `[${(lesion.x / 100).toFixed(2)}, ${(lesion.y / 100).toFixed(2)}]`}
                         </div>
                         {/* Tooltip arrow */}
                         <div style={{
-                          position: 'absolute', bottom: -5, left: '50%', transform: 'translateX(-50%)',
+                          position: 'absolute', bottom: -5, left: '50%',
                           width: 8, height: 8, background: 'rgba(6,13,19,0.96)',
-                          border: `1px solid ${lt.color}60`, borderTop: 'none', borderLeft: 'none',
+                          borderRight: `1px solid ${lt.color}60`,
+                          borderBottom: `1px solid ${lt.color}60`,
                           transform: 'translateX(-50%) rotate(45deg)',
                         }} />
                       </div>
@@ -536,18 +649,40 @@ export default function Canvas({
                 INDEXED PATHOLOGICAL FINDINGS ({lesions.length})
               </span>
               <span style={{ fontFamily: D.mono, fontSize: 9, color: D.teal }}>
-                U-Net Segmentor (IDRiD)
+                Morphological Segmentor
               </span>
             </div>
 
+            {/* Optional lesion summary strip */}
+            {lesionSummary && (
+              <div style={{
+                display: 'flex', alignItems: 'center', gap: 14, padding: '7px 20px',
+                background: 'rgba(255,255,255,0.02)', borderBottom: `1px solid ${D.border}`,
+                fontSize: 10, fontFamily: D.mono, color: D.sub, flexWrap: 'wrap',
+              }}>
+                {lesionSummary.microaneurysm_count != null && (
+                  <span>MA: <strong style={{ color: '#ef4444' }}>{lesionSummary.microaneurysm_count}</strong></span>
+                )}
+                {lesionSummary.hemorrhage_count != null && (
+                  <span>HE: <strong style={{ color: '#f97316' }}>{lesionSummary.hemorrhage_count}</strong></span>
+                )}
+                {(lesionSummary.exudate_count != null || lesionSummary.hard_exudate_count != null) && (
+                  <span>EX: <strong style={{ color: '#eab308' }}>{lesionSummary.exudate_count ?? lesionSummary.hard_exudate_count}</strong></span>
+                )}
+                {lesionSummary.total_lesion_area_px != null && (
+                  <span>Total Area: <strong style={{ color: D.teal }}>{lesionSummary.total_lesion_area_px} px²</strong></span>
+                )}
+              </div>
+            )}
+
             {/* Column headers */}
             <div style={{
-              display: 'grid', gridTemplateColumns: '28px 80px 1fr 90px 44px',
+              display: 'grid', gridTemplateColumns: '28px 90px 1fr 75px 50px',
               padding: '6px 20px',
               borderBottom: `1px solid ${D.border}`,
               flexShrink: 0,
             }}>
-              {['#', 'Finding', 'Region', 'Coords', 'Conf'].map(h => (
+              {['#', 'Finding', 'Region', 'Area', 'Conf'].map(h => (
                 <span key={h} style={{ fontFamily: D.mono, fontSize: 9, color: D.muted, letterSpacing: '0.07em', textTransform: 'uppercase' }}>{h}</span>
               ))}
             </div>
@@ -558,12 +693,12 @@ export default function Canvas({
               style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}
             >
               {lesions.length === 0 && (
-                <div style={{ padding: '32px 20px', textAlign: 'center', fontFamily: D.mono, fontSize: 12, color: D.muted }}>
-                  No lesions detected for Grade 0 (Healthy Fundus)
+                <div style={{ padding: '32px 20px', textAlign: 'center', fontFamily: D.mono, fontSize: 12, color: D.sub }}>
+                  ✓ No lesions detected — healthy retina
                 </div>
               )}
-              {lesions.map((lesion, idx) => {
-                const lt     = lesionTypes[lesion.type] || lesionTypes.microaneurysm;
+              {lesions.map((lesion) => {
+                const lt     = lesion.lt;
                 const region = getLesionRegion(lesion.x, lesion.y);
                 const isHov  = hoveredId === lesion.id;
                 return (
@@ -574,7 +709,7 @@ export default function Canvas({
                     onMouseLeave={() => setHoveredId(null)}
                     style={{
                       display: 'grid',
-                      gridTemplateColumns: '28px 80px 1fr 90px 44px',
+                      gridTemplateColumns: '28px 90px 1fr 75px 50px',
                       padding: '8px 20px',
                       alignItems: 'center',
                       background: isHov ? 'rgba(0,212,170,0.07)' : 'transparent',
@@ -596,23 +731,23 @@ export default function Canvas({
                       color: lt.color,
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>
-                      {lt.symbol}
+                      {lt.symbol} {lt.label}
                     </span>
 
                     {/* Region */}
                     <span style={{ fontFamily: D.mono, fontSize: 11, color: D.sub }}>{region}</span>
 
-                    {/* Coords */}
+                    {/* Area */}
                     <span style={{ fontFamily: D.mono, fontSize: 10, color: D.muted }}>
-                      [{(lesion.x / 100).toFixed(2)}, {(lesion.y / 100).toFixed(2)}]
+                      {lesion.area_px != null ? `${lesion.area_px} px²` : '—'}
                     </span>
 
                     {/* Confidence */}
                     <span style={{
                       fontFamily: D.mono, fontSize: 11, fontWeight: 700,
-                      color: lesion.confidence >= 90 ? '#22c55e' : lesion.confidence >= 80 ? D.teal : '#f59e0b',
+                      color: lesion.confidence == null ? D.sub : lesion.confidence >= 90 ? '#22c55e' : lesion.confidence >= 80 ? D.teal : '#f59e0b',
                     }}>
-                      {lesion.confidence}%
+                      {lesion.confidence != null ? `${lesion.confidence}%` : '—'}
                     </span>
                   </div>
                 );
@@ -675,7 +810,6 @@ function ToolBtn({ active, onClick, label, accent, icon }) {
       transition: 'all 0.12s',
     }}>
       {icon && <span style={{ fontSize: 10 }}>{icon}</span>}
-      {/* Checkbox-style indicator for Grad-CAM */}
       {accent && (
         <span style={{
           width: 12, height: 12, borderRadius: 3,
