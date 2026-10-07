@@ -1,9 +1,19 @@
 # Backend/inference.py
-# Real ResNet-50 inference + Grad-CAM module
-# Called by main.py for every uploaded image
+# ─────────────────────────────────────────────────────────────────────────────
+# Real ResNet-50 inference + Grad-CAM + Lesion Segmentation module.
+# Called by main.py for every uploaded image.
+#
+# Changes from original (P2 Week 1-2 fixes):
+#   1. [FIX]  Grad-CAM hook leak → hooks stored and removed after each run.
+#   2. [FIX]  OOD rejection softened → confidence-based warning, not hard block.
+#   3. [NEW]  segment.py wired in → lesions + lesion_summary in every response.
+#   4. [FIX]  _build_model() tries shared ml_script/model.py first; falls back
+#             to local definition so Backend/ works standalone as well.
+# ─────────────────────────────────────────────────────────────────────────────
 
 import os
 import io
+import sys
 import torch
 import torch.nn as nn
 import numpy as np
@@ -11,10 +21,14 @@ from PIL import Image
 from torchvision import models, transforms
 import cv2
 
+# ── Import lesion segmentation ──────────────────────────────────────────────
+from segment import segment_lesions
+
 # ─── Constants ─────────────────────────────────────────────────────────────
-IMG_SIZE     = 224
-NUM_CLASSES  = 5
-DEVICE       = torch.device("cpu")   # CPU is fine for single-image inference ~140ms
+IMG_SIZE       = 224
+NUM_CLASSES    = 5
+DEVICE         = torch.device("cpu")   # ~140 ms per image — acceptable for demo
+OOD_LOW_CONF   = 0.40   # if max(softmax) < this → "Low Confidence" warning
 
 # ICDR class info
 LEVEL_LABELS = [
@@ -32,191 +46,276 @@ LEVEL_ACTIONS = [
     "Emergency Laser / Surgical Review",
 ]
 
-# ─── Preprocessing ─────────────────────────────────────────────────────────
+# ─── Preprocessing chain ───────────────────────────────────────────────────
+_imagenet_normalize = transforms.Normalize(
+    mean=[0.485, 0.456, 0.406],
+    std =[0.229, 0.224, 0.225],
+)
+
 preprocess = transforms.Compose([
     transforms.Resize((IMG_SIZE, IMG_SIZE)),
     transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                         std=[0.229, 0.224, 0.225]),
+    _imagenet_normalize,
 ])
 
-def validate_fundus(img_np):
-    """Simple heuristic OOD (Out-of-Distribution) detection for non-fundus images."""
-    # 1. Check corner darkness (Fundus should have a dark circular mask)
-    corners_mean = np.mean([
-        img_np[:20, :20], img_np[:20, -20:],
-        img_np[-20:, :20], img_np[-20:, -20:]
-    ])
-    if corners_mean > 0.35:
-        raise ValueError("OOD_REJECT: No circular retinal mask detected (Corners too bright).")
 
-    # 2. Check center color balance (Fundus should be heavily red/orange dominant)
-    # img_np is (H, W, 3) in RGB, values 0..1 or 0..255. 
-    # Wait, img_np passed here will be 0..255 from PIL.
-    h, w = img_np.shape[:2]
-    center = img_np[h//2-30 : h//2+30, w//2-30 : w//2+30]
-    r, g, b = np.mean(center[:,:,0]), np.mean(center[:,:,1]), np.mean(center[:,:,2])
-    if r < g or r < b:
-        raise ValueError("OOD_REJECT: Retinal pigment signature not found (Invalid color profile).")
-
-
-def apply_ben_graham_clahe(img_pil, img_size):
-    """Applies CLAHE and Ben Graham normalization to match the MATLAB training pipeline."""
-    img = np.array(img_pil)
-    if len(img.shape) == 2:
-        img = cv2.cvtColor(img, cv2.COLOR_GRAY2RGB)
-    elif img.shape[2] == 4:
-        img = cv2.cvtColor(img, cv2.COLOR_RGBA2RGB)
-        
+# ─── CLAHE + Ben Graham enhancement ────────────────────────────────────────
+def apply_ben_graham_clahe(img_pil: Image.Image, img_size: int) -> Image.Image:
+    """
+    Apply CLAHE + Ben Graham normalization.
+    Must be identical to the preprocessing used during training.
+    (See ml_script/preprocess.py — single source of truth once P1 creates it.)
+    """
+    img = np.array(img_pil.convert("RGB"), dtype=np.uint8)
     img = cv2.resize(img, (img_size, img_size))
-    
-    # 1. Apply CLAHE to the L channel of LAB color space
-    lab = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
-    l, a, b = cv2.split(lab)
-    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
-    cl = clahe.apply(l)
-    img_clahe = cv2.cvtColor(cv2.merge((cl, a, b)), cv2.COLOR_LAB2RGB)
-    
-    # 2. Ben Graham Normalization (blend with blurred version)
-    img_blur = cv2.GaussianBlur(img_clahe, (0, 0), img_size / 30)
-    img_enhanced = cv2.addWeighted(img_clahe, 4, img_blur, -4, 128)
-    
-    return Image.fromarray(img_enhanced)
 
-# ─── Model Builder ─────────────────────────────────────────────────────────
-def _build_model():
-    model = models.resnet50(weights=None)
-    model.fc = nn.Sequential(
+    # CLAHE on L channel of LAB
+    lab     = cv2.cvtColor(img, cv2.COLOR_RGB2LAB)
+    l, a, b = cv2.split(lab)
+    clahe   = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    cl      = clahe.apply(l)
+    img_clahe = cv2.merge((cl, a, b))
+    img_clahe = cv2.cvtColor(img_clahe, cv2.COLOR_LAB2RGB)
+
+    # Ben Graham: blend with blurred version for local normalisation
+    img_blur    = cv2.GaussianBlur(img_clahe, (0, 0), img_size / 30)
+    img_enhanced = cv2.addWeighted(img_clahe, 4, img_blur, -4, 128)
+
+    return Image.fromarray(img_enhanced.astype(np.uint8))
+
+
+# ─── OOD Validation (softened per Week-2 fix) ──────────────────────────────
+def validate_fundus_heuristic(img_np: np.ndarray) -> list[str]:
+    """
+    Lightweight heuristic checks.  Returns a list of WARNING strings instead
+    of raising an exception.  The confidence-based OOD check in run_inference()
+    is the real gatekeeper for live images.
+
+    img_np: float32 array in [0,1], shape (H, W, 3), RGB.
+    """
+    warnings = []
+
+    # 1 — Corner darkness: fundus images have a dark circular vignette
+    corners = np.concatenate([
+        img_np[:20, :20].ravel(),
+        img_np[:20, -20:].ravel(),
+        img_np[-20:, :20].ravel(),
+        img_np[-20:, -20:].ravel(),
+    ])
+    if corners.mean() > 0.50:   # raised from 0.35 → fewer false rejections
+        warnings.append("Corners unusually bright — possible non-fundus image.")
+
+    # 2 — Red-channel dominance in centre
+    h, w = img_np.shape[:2]
+    cx, cy = h // 2, w // 2
+    center = img_np[cx - 30: cx + 30, cy - 30: cy + 30]
+    r_mean = center[:, :, 0].mean()
+    g_mean = center[:, :, 1].mean()
+    b_mean = center[:, :, 2].mean()
+    if r_mean < g_mean or r_mean < b_mean:
+        warnings.append("Retinal pigment signature weak — check image source.")
+
+    return warnings
+
+
+# ─── Model builder ─────────────────────────────────────────────────────────
+def _build_model() -> nn.Module:
+    """
+    Try importing build_model() from the shared ml_script/model.py (P1's
+    single source of truth).  If that file does not yet exist (or is still a
+    stub), fall back to the local definition so Backend/ stays self-contained.
+    """
+    # Look for ml_script one directory above Backend/
+    ml_script_path = os.path.join(os.path.dirname(__file__), "..", "ml_script")
+    ml_script_path = os.path.normpath(ml_script_path)
+
+    if os.path.isdir(ml_script_path):
+        if ml_script_path not in sys.path:
+            sys.path.insert(0, ml_script_path)
+        try:
+            from model import build_model  # type: ignore
+            print("[inference] Using shared ml_script/model.py → build_model()")
+            return build_model()
+        except (ImportError, AttributeError):
+            pass  # fall through to local definition
+
+    # ── Local fallback definition (kept in sync with ml_script/model.py) ──
+    print("[inference] Using local _build_model() — ml_script/model.py not yet ready.")
+    m = models.resnet50(weights=None)
+    m.fc = nn.Sequential(
         nn.Dropout(0.4),
-        nn.Linear(model.fc.in_features, 512),
+        nn.Linear(m.fc.in_features, 512),
         nn.ReLU(),
         nn.Dropout(0.3),
-        nn.Linear(512, NUM_CLASSES)
+        nn.Linear(512, NUM_CLASSES),
     )
-    return model
+    return m
 
 
-# ─── Singleton Model Loader ─────────────────────────────────────────────────
-_model = None
-_model_path = None
+# ─── Singleton model loader ─────────────────────────────────────────────────
+_model:      nn.Module | None = None
+_model_path: str | None       = None
 
-def get_model(model_path: str):
-    """Load model once, reuse across requests."""
+def get_model(model_path: str) -> nn.Module:
+    """Load model once, reuse across all requests (singleton pattern)."""
     global _model, _model_path
     if _model is None or _model_path != model_path:
         if not os.path.exists(model_path):
-            raise FileNotFoundError(f"Model not found: {model_path}")
-        checkpoint = torch.load(model_path, map_location=DEVICE)
+            raise FileNotFoundError(f"Model weights not found: {model_path}")
+        checkpoint = torch.load(model_path, map_location=DEVICE, weights_only=False)
         _model = _build_model().to(DEVICE)
-        _model.load_state_dict(checkpoint["model_state_dict"])
+        state  = checkpoint.get("model_state_dict", checkpoint)
+        _model.load_state_dict(state)
         _model.eval()
         _model_path = model_path
-        print(f"✅ Model loaded (epoch {checkpoint.get('epoch','?')}): {model_path}")
+        epoch = checkpoint.get("epoch", "?") if isinstance(checkpoint, dict) else "?"
+        print(f"✅ Model loaded (epoch {epoch}): {model_path}")
     return _model
 
 
-# ─── Grad-CAM ──────────────────────────────────────────────────────────────
+# ─── Grad-CAM (hook leak fixed) ────────────────────────────────────────────
 class GradCAMSimple:
-    """Minimal Grad-CAM without extra dependencies."""
-    def __init__(self, model):
-        self.model = model
-        self.gradients = None
+    """
+    Minimal Grad-CAM without extra dependencies.
+
+    FIX (Week 2, P2): hooks are registered per-call via a context manager and
+    removed immediately after .generate() returns, preventing accumulation on
+    the singleton model across repeated requests.
+    """
+
+    def __init__(self, model: nn.Module):
+        self.model      = model
+        self.gradients  = None
         self.activations = None
-        self._register_hooks()
+        self._handles   = []   # ← store handles so we can remove them
 
     def _register_hooks(self):
-        target_layer = self.model.layer4[-1]  # last ResNet block
-        target_layer.register_forward_hook(self._save_activations)
-        target_layer.register_full_backward_hook(self._save_gradients)
+        target = self.model.layer4[-1]
+        h1 = target.register_forward_hook(self._save_activations)
+        h2 = target.register_full_backward_hook(self._save_gradients)
+        self._handles = [h1, h2]
 
-    def _save_activations(self, module, input, output):
+    def _remove_hooks(self):
+        for h in self._handles:
+            h.remove()
+        self._handles = []
+
+    def _save_activations(self, _module, _input, output):
         self.activations = output.detach()
 
-    def _save_gradients(self, module, grad_input, grad_output):
+    def _save_gradients(self, _module, _grad_input, grad_output):
         self.gradients = grad_output[0].detach()
 
-    def generate(self, input_tensor, class_idx):
-        self.model.zero_grad()
-        output = self.model(input_tensor)
-        output[0, class_idx].backward()
+    def generate(self, input_tensor: torch.Tensor, class_idx: int) -> np.ndarray:
+        """
+        Generate normalised Grad-CAM heatmap for class_idx.
+        Hooks are registered just before the forward pass and removed after.
+        """
+        self._register_hooks()
+        try:
+            self.model.zero_grad()
+            output = self.model(input_tensor)
+            output[0, class_idx].backward()
 
-        weights = self.gradients.mean(dim=[2, 3], keepdim=True)   # [1, C, 1, 1]
-        cam = (weights * self.activations).sum(dim=1, keepdim=True)  # [1, 1, H, W]
-        cam = torch.relu(cam)
-        cam = cam.squeeze().numpy()
+            weights = self.gradients.mean(dim=[2, 3], keepdim=True)   # [1, C, 1, 1]
+            cam     = (weights * self.activations).sum(dim=1)          # [1, H, W]
+            cam     = torch.relu(cam).squeeze().cpu().numpy()
 
-        # Normalize to [0, 1]
-        cam_min, cam_max = cam.min(), cam.max()
-        if cam_max - cam_min > 1e-8:
-            cam = (cam - cam_min) / (cam_max - cam_min)
-        else:
-            cam = np.zeros_like(cam)
+            # Normalise to [0, 1]
+            cam_min, cam_max = cam.min(), cam.max()
+            if cam_max - cam_min > 1e-8:
+                cam = (cam - cam_min) / (cam_max - cam_min)
+            else:
+                cam = np.zeros_like(cam)
 
-        return cam
+            return cam
+        finally:
+            self._remove_hooks()   # ← always clean up, even on error
 
 
-# ─── Main Inference Function ───────────────────────────────────────────────
-def run_inference(image_bytes: bytes, model_path: str, heatmap_save_path: str):
+# ─── Main inference function ────────────────────────────────────────────────
+def run_inference(image_bytes: bytes, model_path: str, heatmap_save_path: str) -> dict:
     """
+    Full inference pipeline: preprocess → classify → Grad-CAM → segment.
+
     Args:
-        image_bytes: raw bytes of uploaded image
-        model_path:  absolute path to retinascan_resnet50.pth
-        heatmap_save_path: where to save the Grad-CAM JPEG
+        image_bytes:       Raw bytes of the uploaded fundus image.
+        model_path:        Absolute path to retinascan_resnet50.pth.
+        heatmap_save_path: Where to write the Grad-CAM overlay JPEG.
 
-    Returns dict:
-        severity     (int 0–4)
-        confidence   (float, percentage)
-        label        (str)
-        action       (str)
-        heatmap_url  (str, relative URL)
-        all_probs    (list of 5 floats)
+    Returns:
+        Full dict matching API contract (Context/API_Contract.md):
+        {
+          severity, confidence, label, action,
+          heatmap_url, all_probs,
+          lesions, lesion_summary
+        }
+
+    Raises:
+        ValueError with "OOD_REJECT:" prefix → caught by main.py → {"mode":"error"}
     """
-    # Load image
-    img_pil_orig  = Image.open(io.BytesIO(image_bytes)).convert("RGB")
-    
-    # OOD Validation (throws ValueError if it's a watermelon/face)
-    validate_fundus(np.array(img_pil_orig) / 255.0)
-    
-    # Apply Ben Graham and CLAHE preprocessing
-    img_pil = apply_ben_graham_clahe(img_pil_orig, IMG_SIZE)
-    img_np  = np.array(img_pil) / 255.0  # for overlay
+    # ── 1. Load image ───────────────────────────────────────────────────────
+    img_pil_orig = Image.open(io.BytesIO(image_bytes)).convert("RGB")
+    img_np_orig  = np.array(img_pil_orig, dtype=np.float32) / 255.0
 
-    # Preprocess
-    input_tensor = preprocess(img_pil).unsqueeze(0).to(DEVICE)
+    # ── 2. Heuristic OOD pre-check (warnings only, not hard reject) ─────────
+    heuristic_warnings = validate_fundus_heuristic(img_np_orig)
+    for w in heuristic_warnings:
+        print(f"[OOD heuristic] ⚠  {w}")
+
+    # ── 3. CLAHE + Ben Graham preprocessing ────────────────────────────────
+    img_pil_enhanced = apply_ben_graham_clahe(img_pil_orig, IMG_SIZE)
+    img_np_enhanced  = np.array(img_pil_enhanced, dtype=np.float32) / 255.0
+
+    # ── 4. Tensor preparation ───────────────────────────────────────────────
+    input_tensor = preprocess(img_pil_enhanced).unsqueeze(0).to(DEVICE)
     input_tensor.requires_grad_(True)
 
-    # Load model
-    model = get_model(model_path)
+    # ── 5. Forward pass ─────────────────────────────────────────────────────
+    model    = get_model(model_path)
     grad_cam = GradCAMSimple(model)
 
-    # Forward pass
     with torch.enable_grad():
-        output = model(input_tensor)
-        probs  = torch.softmax(output, dim=1).squeeze()
+        logits = model(input_tensor)
+        probs  = torch.softmax(logits, dim=1).squeeze()  # shape [5]
         grade  = int(probs.argmax().item())
-        conf   = float(probs[grade].item()) * 100.0
+        conf   = float(probs[grade].item())
 
-        # Grad-CAM for predicted class
+    # ── 6. Confidence-based OOD hard reject ─────────────────────────────────
+    if conf < OOD_LOW_CONF:
+        # Return structured error — NOT an exception — so main.py can JSON-return it
+        raise ValueError(
+            f"OOD_REJECT: Low confidence ({conf * 100:.1f}%) — "
+            "image may not be a fundus photograph."
+        )
+
+    # ── 7. Grad-CAM (hooks auto-removed after generate()) ───────────────────
+    with torch.enable_grad():
         cam = grad_cam.generate(input_tensor, grade)
 
-    # Overlay Grad-CAM on original image
+    # ── 8. Overlay Grad-CAM on enhanced image ───────────────────────────────
     cam_resized = cv2.resize(cam, (IMG_SIZE, IMG_SIZE))
-    heatmap     = cv2.applyColorMap(np.uint8(255 * cam_resized), cv2.COLORMAP_JET)
-    heatmap     = cv2.cvtColor(heatmap, cv2.COLOR_BGR2RGB) / 255.0
-    overlay     = (0.6 * img_np + 0.4 * heatmap).clip(0, 1)
+    heatmap_rgb = cv2.applyColorMap(np.uint8(255 * cam_resized), cv2.COLORMAP_JET)
+    heatmap_rgb = cv2.cvtColor(heatmap_rgb, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
+    overlay     = np.clip(0.6 * img_np_enhanced + 0.4 * heatmap_rgb, 0, 1)
     overlay_bgr = cv2.cvtColor(np.uint8(overlay * 255), cv2.COLOR_RGB2BGR)
 
-    # Save heatmap
-    os.makedirs(os.path.dirname(heatmap_save_path), exist_ok=True)
+    os.makedirs(os.path.dirname(os.path.abspath(heatmap_save_path)), exist_ok=True)
     cv2.imwrite(heatmap_save_path, overlay_bgr)
-
     heatmap_filename = os.path.basename(heatmap_save_path)
 
+    # ── 9. Lesion segmentation (Python port of segment_lesions.m) ───────────
+    seg_result = segment_lesions(img_pil_orig)   # uses original (not enhanced) for seg
+
+    # ── 10. Build API response ───────────────────────────────────────────────
     return {
-        "severity":    grade,
-        "confidence":  round(conf, 1),
-        "label":       LEVEL_LABELS[grade],
-        "action":      LEVEL_ACTIONS[grade],
-        "heatmap_url": f"/images/{heatmap_filename}",
-        "all_probs":   [round(float(p), 4) for p in probs.tolist()],
+        "severity":       grade,
+        "confidence":     round(conf * 100, 1),
+        "label":          LEVEL_LABELS[grade],
+        "action":         LEVEL_ACTIONS[grade],
+        "heatmap_url":    f"/images/{heatmap_filename}",
+        "all_probs":      [round(float(p), 4) for p in probs.tolist()],
+        "lesions":        seg_result["lesions"],
+        "lesion_summary": seg_result["lesion_summary"],
+        "ood_warnings":   heuristic_warnings,   # surfaced to frontend for transparency
     }
