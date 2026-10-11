@@ -23,6 +23,8 @@ import os
 import uuid
 import asyncio
 import json
+from typing import List, Optional, Any
+from pydantic import BaseModel
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -84,6 +86,14 @@ try:
     SEGMENT_AVAILABLE = True
 except ImportError:
     SEGMENT_AVAILABLE = False
+
+# ── In-Silico Counterfactual XAI engine ─────────────────────────────────────
+try:
+    from counterfactual import run_counterfactual_laser
+    COUNTERFACTUAL_AVAILABLE = True
+except ImportError as exc:
+    print(f"[WARN] counterfactual engine import failed: {exc}")
+    COUNTERFACTUAL_AVAILABLE = False
 
 # ── Serve static images from the frontend public/images folder ──────────────
 app.mount("/images", StaticFiles(directory=FRONTEND_IMG), name="images")
@@ -261,7 +271,16 @@ async def upload_image(file: UploadFile = File(...)):
     # ── REAL mode (single-threaded to prevent OOM) ────────────────────────--
     async with inference_lock:
         try:
-            heatmap_name = f"heatmap_live_{uuid.uuid4().hex[:8]}.png"
+            scan_uid = uuid.uuid4().hex[:8]
+            upload_filename = f"scan_live_{scan_uid}.jpg"
+            upload_disk_path = os.path.join(FRONTEND_IMG, upload_filename)
+            try:
+                with open(upload_disk_path, "wb") as f:
+                    f.write(image_bytes)
+            except Exception as write_err:
+                print(f"[WARN] Could not persist raw scan upload: {write_err}")
+
+            heatmap_name = f"heatmap_live_{scan_uid}.png"
             heatmap_path = os.path.join(FRONTEND_IMG, heatmap_name)
 
             loop   = asyncio.get_event_loop()
@@ -273,6 +292,7 @@ async def upload_image(file: UploadFile = File(...)):
                 heatmap_path,
             )
             result["mode"] = "real"
+            result["image_url"] = f"/images/{upload_filename}"
             return result
 
         except ValueError as exc:
@@ -291,6 +311,64 @@ async def upload_image(file: UploadFile = File(...)):
             fallback["mode"]  = "fallback"
             fallback["error"] = "Real inference failed — showing pre-computed result."
             return JSONResponse(status_code=200, content=fallback)
+
+
+# ── In-Silico Laser Counterfactual XAI Models & Endpoint ────────────────────
+class LaserLesionItem(BaseModel):
+    id: Optional[Any] = None
+    type: Optional[str] = None
+    x: Optional[float] = None
+    y: Optional[float] = None
+    area_px: Optional[float] = None
+    bbox: Optional[List[int]] = None
+
+
+class LaserSpotItem(BaseModel):
+    x: float
+    y: float
+    radius: Optional[float] = 18.0
+
+
+class CounterfactualLaserRequest(BaseModel):
+    image_identifier: str
+    ablated_lesions: Optional[List[LaserLesionItem]] = []
+    laser_spots: Optional[List[LaserSpotItem]] = []
+    original_severity: Optional[int] = 2
+    original_probs: Optional[List[float]] = None
+
+
+@app.post("/counterfactual-laser")
+async def counterfactual_laser(payload: CounterfactualLaserRequest):
+    """
+    In-Silico Laser Photocoagulation Counterfactual XAI Endpoint.
+    Simulates clinical laser ablation / inpainting on designated lesions,
+    re-runs ResNet-50 forward pass + Grad-CAM, and calculates
+    quantitative causal attribution metrics.
+    """
+    if not COUNTERFACTUAL_AVAILABLE:
+        raise HTTPException(
+            status_code=503,
+            detail="Counterfactual engine could not be loaded."
+        )
+
+    async with inference_lock:
+        try:
+            loop = asyncio.get_event_loop()
+            res = await loop.run_in_executor(
+                None,
+                run_counterfactual_laser,
+                payload.image_identifier,
+                [l.dict() for l in (payload.ablated_lesions or [])],
+                [s.dict() for s in (payload.laser_spots or [])],
+                MODEL_PATH,
+                FRONTEND_IMG,
+                payload.original_severity if payload.original_severity is not None else 2,
+                payload.original_probs,
+            )
+            return res
+        except Exception as exc:
+            print(f"[ERROR] Counterfactual Laser execution failed: {exc}")
+            raise HTTPException(status_code=500, detail=str(exc))
 
 
 @app.get("/health")

@@ -63,6 +63,15 @@ const KEYFRAMES = `
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
   }
+  @keyframes laser-pulse {
+    0%   { box-shadow: 0 0 6px #06b6d4, inset 0 0 6px #06b6d4; }
+    50%  { box-shadow: 0 0 16px #06b6d4, inset 0 0 10px #06b6d4; }
+    100% { box-shadow: 0 0 6px #06b6d4, inset 0 0 6px #06b6d4; }
+  }
+  @keyframes laser-spin {
+    from { transform: translate(-50%,-50%) rotate(0deg); }
+    to   { transform: translate(-50%,-50%) rotate(360deg); }
+  }
 `;
 
 function getQuadrant(x, y) {
@@ -139,6 +148,15 @@ export default function Results({
   const [heatmapError, setHeatmapError] = useState(false);
   const [filterType,   setFilterType]   = useState('all');
 
+  // ── In-Silico Laser Counterfactual XAI State ──
+  const [laserMode,              setLaserMode]              = useState(false);
+  const [selectedLaserLesionIds, setSelectedLaserLesionIds] = useState([]);
+  const [laserSpots,             setLaserSpots]             = useState([]);
+  const [isFiringLaser,          setIsFiringLaser]          = useState(false);
+  const [counterfactualResult,   setCounterfactualResult]   = useState(null);
+  const [counterfactualError,    setCounterfactualError]    = useState(null);
+  const [laserDisplayMode,       setLaserDisplayMode]       = useState('treated'); // 'treated' | 'cf_heatmap' | 'original'
+
   const sev       = severity ?? patient?.severity ?? 2;
   const eye       = selectedEye || 'od';
   const gradeInfo = GRADE_LABELS[sev] || GRADE_LABELS[2];
@@ -178,6 +196,79 @@ export default function Results({
   const heatmapPath = heatmapUrl
     ? (heatmapUrl.startsWith('http') ? heatmapUrl : `http://localhost:8000${heatmapUrl}`)
     : '';
+
+  const currentFundusPath = useMemo(() => {
+    if (counterfactualResult && (laserDisplayMode === 'treated' || laserDisplayMode === 'cf_heatmap')) {
+      const u = counterfactualResult.counterfactual.treated_image_url;
+      return u.startsWith('http') ? u : `http://localhost:8000${u}`;
+    }
+    return fundusPath;
+  }, [counterfactualResult, laserDisplayMode, fundusPath]);
+
+  const currentHeatmapPath = useMemo(() => {
+    if (counterfactualResult && laserDisplayMode === 'cf_heatmap') {
+      const u = counterfactualResult.counterfactual.heatmap_url;
+      return u.startsWith('http') ? u : `http://localhost:8000${u}`;
+    }
+    return heatmapPath;
+  }, [counterfactualResult, laserDisplayMode, heatmapPath]);
+
+  const handleFireLaser = async () => {
+    if (selectedLaserLesionIds.length === 0 && laserSpots.length === 0) {
+      alert("Please select at least one lesion pin or target a spot with the laser!");
+      return;
+    }
+    setIsFiringLaser(true);
+    setCounterfactualError(null);
+
+    const ablated = lesions.filter(l => selectedLaserLesionIds.includes(l.id));
+    const baseProbs = (allProbs || patient?.all_probs || probs.map(p => p / 100));
+
+    try {
+      const resp = await fetch('http://localhost:8000/counterfactual-laser', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          image_identifier: fundusPath,
+          ablated_lesions: ablated.map(l => ({
+            id: l.id,
+            type: l.type,
+            x: l.x,
+            y: l.y,
+            area_px: l.area_px,
+            bbox: l.bbox,
+          })),
+          laser_spots: laserSpots,
+          original_severity: sev,
+          original_probs: baseProbs,
+        }),
+      });
+
+      if (!resp.ok) {
+        throw new Error(`Server returned HTTP ${resp.status}`);
+      }
+
+      const data = await resp.json();
+      setCounterfactualResult(data);
+      setLaserDisplayMode('treated');
+    } catch (err) {
+      console.error("In-silico laser failed:", err);
+      setCounterfactualError(err.message || "Failed to execute in-silico laser.");
+    } finally {
+      setIsFiringLaser(false);
+    }
+  };
+
+  const handleCanvasClick = (e) => {
+    if (!laserMode) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const xPct = ((e.clientX - rect.left) / rect.width) * 100;
+    const yPct = ((e.clientY - rect.top) / rect.height) * 100;
+    const distFromCenter = Math.sqrt((xPct - 50) ** 2 + (yPct - 50) ** 2);
+    if (distFromCenter <= 48) {
+      setLaserSpots(prev => [...prev, { x: Math.round(xPct * 10) / 10, y: Math.round(yPct * 10) / 10, radius: 18 }]);
+    }
+  };
 
   const presentTypes = LEGEND_TYPES.filter(t => lesions.some(l => l.type === t.type));
 
@@ -374,9 +465,110 @@ export default function Results({
             <ToolBtn active={showPins}    onClick={() => setShowPins(v => !v)}    label={`Lesion Pins (${lesions.length})`} icon="⊕" />
             <div style={{ width: 1, height: 18, background: D.border }} />
             <ToolBtn active={showRedFree} onClick={() => setShowRedFree(v => !v)} label="Red-Free (540nm)" />
+            <div style={{ width: 1, height: 18, background: D.border }} />
+            <button
+              onClick={() => {
+                const next = !laserMode;
+                setLaserMode(next);
+                if (next && selectedLaserLesionIds.length === 0) {
+                  const defaults = lesions.filter(l => l.type === 'hemorrhage' || l.type === 'hardExudate').slice(0, 3).map(l => l.id);
+                  if (defaults.length > 0) setSelectedLaserLesionIds(defaults);
+                }
+              }}
+              style={{
+                all: 'unset', cursor: 'pointer',
+                padding: '4px 12px', borderRadius: 6,
+                fontSize: 11, fontWeight: 700,
+                display: 'flex', alignItems: 'center', gap: 5,
+                background: laserMode ? '#042f2e' : '#f0fdfa',
+                color: laserMode ? '#2dd4bf' : '#0f766e',
+                border: `1px solid ${laserMode ? '#14b8a6' : '#99f6e4'}`,
+                boxShadow: laserMode ? '0 0 10px rgba(20,184,166,0.35)' : 'none',
+                transition: 'all 0.15s ease',
+              }}
+            >
+              <span style={{ fontSize: 12 }}>⚡</span>
+              <span>In-Silico Laser XAI</span>
+              {selectedLaserLesionIds.length > 0 && (
+                <span style={{
+                  background: laserMode ? '#14b8a6' : '#0d9488',
+                  color: '#ffffff', borderRadius: 10, padding: '1px 6px', fontSize: 9, fontWeight: 800,
+                }}>
+                  {selectedLaserLesionIds.length}
+                </span>
+              )}
+            </button>
             <div style={{ flex: 1 }} />
             <span style={{ fontSize: 11, color: D.muted, fontWeight: 500 }}>FOV 45° Posterior Pole</span>
           </div>
+
+          {/* ── In-Silico Laser Control Bar (Active when Laser Mode toggled) ── */}
+          {laserMode && (
+            <div style={{
+              padding: '8px 18px',
+              background: '#042f2e',
+              borderBottom: '1px solid #14b8a6',
+              display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap',
+              animation: 'fade-up 0.2s ease both',
+              color: '#ccfbf1',
+            }}>
+              <span style={{
+                display: 'inline-flex', alignItems: 'center', gap: 6,
+                background: 'rgba(20,184,166,0.2)', border: '1px solid #14b8a6',
+                padding: '3px 9px', borderRadius: 6, fontSize: 10, fontWeight: 800,
+                letterSpacing: '0.06em', color: '#2dd4bf', textTransform: 'uppercase',
+              }}>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#2dd4bf', animation: 'laser-pulse 1s infinite' }} />
+                In-Silico Laser Surgery (XAI)
+              </span>
+
+              <span style={{ fontSize: 11, color: '#99f6e4' }}>
+                Targeting: <strong>{selectedLaserLesionIds.length + laserSpots.length}</strong> site(s)
+              </span>
+
+              <div style={{ display: 'flex', gap: 5 }}>
+                <button onClick={() => setSelectedLaserLesionIds(lesions.filter(l => l.type === 'hemorrhage').map(l => l.id))} style={{
+                  all: 'unset', cursor: 'pointer', padding: '2px 8px', borderRadius: 4,
+                  background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)',
+                  fontSize: 10, fontWeight: 600, color: '#fed7aa',
+                }}>+ Hemorrhages</button>
+                <button onClick={() => setSelectedLaserLesionIds(lesions.filter(l => l.type === 'hardExudate').map(l => l.id))} style={{
+                  all: 'unset', cursor: 'pointer', padding: '2px 8px', borderRadius: 4,
+                  background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)',
+                  fontSize: 10, fontWeight: 600, color: '#bae6fd',
+                }}>+ Exudates</button>
+                <button onClick={() => setSelectedLaserLesionIds(lesions.map(l => l.id))} style={{
+                  all: 'unset', cursor: 'pointer', padding: '2px 8px', borderRadius: 4,
+                  background: 'rgba(255,255,255,0.08)', border: '1px solid rgba(255,255,255,0.2)',
+                  fontSize: 10, fontWeight: 600, color: '#fef08a',
+                }}>+ All</button>
+                {(selectedLaserLesionIds.length > 0 || laserSpots.length > 0) && (
+                  <button onClick={() => { setSelectedLaserLesionIds([]); setLaserSpots([]); }} style={{
+                    all: 'unset', cursor: 'pointer', padding: '2px 8px', borderRadius: 4,
+                    background: 'rgba(239,68,68,0.2)', border: '1px solid rgba(239,68,68,0.4)',
+                    fontSize: 10, fontWeight: 600, color: '#fca5a5',
+                  }}>Clear</button>
+                )}
+              </div>
+
+              <div style={{ flex: 1 }} />
+
+              <button
+                onClick={handleFireLaser}
+                disabled={isFiringLaser}
+                style={{
+                  all: 'unset', cursor: isFiringLaser ? 'wait' : 'pointer',
+                  padding: '5px 14px', borderRadius: 6,
+                  background: isFiringLaser ? '#0d9488' : 'linear-gradient(135deg, #0d9488, #059669)',
+                  color: '#ffffff', fontSize: 11, fontWeight: 800,
+                  boxShadow: '0 0 12px rgba(20,184,166,0.5)',
+                  display: 'flex', alignItems: 'center', gap: 6,
+                }}
+              >
+                {isFiringLaser ? '⚡ Inpainting & Retesting AI...' : '⚡ Fire Laser & Retest AI'}
+              </button>
+            </div>
+          )}
 
           {/* Image area — High-contrast medical viewer frame */}
           <div style={{
@@ -407,17 +599,62 @@ export default function Results({
               <div><span style={{ color: '#94a3b8' }}>RES: </span>512 × 512 px</div>
             </div>
 
+            {/* ── View Switcher Pill (Active when Counterfactual Result is computed) ── */}
+            {counterfactualResult && (
+              <div style={{
+                position: 'absolute', top: 14, left: '50%', transform: 'translateX(-50%)', zIndex: 25,
+                background: 'rgba(15,23,42,0.92)', backdropFilter: 'blur(8px)',
+                border: '1px solid #14b8a6', borderRadius: 20, padding: '3px 6px',
+                display: 'flex', alignItems: 'center', gap: 4, boxShadow: '0 4px 16px rgba(0,0,0,0.5)',
+              }}>
+                {[
+                  { key: 'treated', label: '✓ Treated Fundus' },
+                  { key: 'cf_heatmap', label: 'Post-Laser Heatmap' },
+                  { key: 'original', label: 'Baseline Scan' },
+                ].map(m => (
+                  <button key={m.key} onClick={() => setLaserDisplayMode(m.key)} style={{
+                    all: 'unset', cursor: 'pointer',
+                    padding: '4px 11px', borderRadius: 14, fontSize: 10, fontWeight: 700,
+                    background: laserDisplayMode === m.key ? '#0d9488' : 'transparent',
+                    color: laserDisplayMode === m.key ? '#ffffff' : '#94a3b8',
+                    transition: 'all 0.15s',
+                  }}>
+                    {m.label}
+                  </button>
+                ))}
+                <button onClick={() => {
+                  setCounterfactualResult(null);
+                  setLaserDisplayMode('treated');
+                  setSelectedLaserLesionIds([]);
+                  setLaserSpots([]);
+                }} style={{
+                  all: 'unset', cursor: 'pointer',
+                  padding: '4px 9px', borderRadius: 14, fontSize: 10, fontWeight: 700,
+                  color: '#f87171', borderLeft: '1px solid rgba(255,255,255,0.2)', marginLeft: 3,
+                }}>
+                  ↺ Reset
+                </button>
+              </div>
+            )}
+
             {/* ── Circular fundus with lesion pins ── */}
-            <div style={{
-              position: 'relative',
-              width: 'min(470px, calc(100% - 24px), calc(100vh - 240px))',
-              height: 'min(470px, calc(100% - 24px), calc(100vh - 240px))',
-              aspectRatio: '1 / 1',
-              borderRadius: '50%',
-              overflow: 'hidden',
-              boxShadow: '0 0 0 1px rgba(255,255,255,0.1), 0 0 50px rgba(0,0,0,0.8)',
-              flexShrink: 0,
-            }}>
+            <div
+              onClick={handleCanvasClick}
+              style={{
+                position: 'relative',
+                width: 'min(470px, calc(100% - 24px), calc(100vh - 240px))',
+                height: 'min(470px, calc(100% - 24px), calc(100vh - 240px))',
+                aspectRatio: '1 / 1',
+                borderRadius: '50%',
+                overflow: 'hidden',
+                boxShadow: laserMode
+                  ? '0 0 0 2px #14b8a6, 0 0 35px rgba(20,184,166,0.45)'
+                  : '0 0 0 1px rgba(255,255,255,0.1), 0 0 50px rgba(0,0,0,0.8)',
+                flexShrink: 0,
+                cursor: laserMode ? 'crosshair' : 'default',
+                transition: 'box-shadow 0.3s ease',
+              }}
+            >
               {imgError ? (
                 <div style={{
                   width: '100%', height: '100%',
@@ -428,7 +665,7 @@ export default function Results({
                 </div>
               ) : (
                 <img
-                  src={fundusPath}
+                  src={currentFundusPath}
                   alt={`Retina Grade ${sev}`}
                   onError={() => setImgError(true)}
                   style={{
@@ -438,8 +675,8 @@ export default function Results({
                 />
               )}
 
-              {showHeatmap && heatmapPath && !heatmapError && (
-                <img src={heatmapPath} alt="Grad-CAM"
+              {showHeatmap && currentHeatmapPath && !heatmapError && (
+                <img src={currentHeatmapPath} alt="Grad-CAM"
                   onError={() => setHeatmapError(true)}
                   style={{
                     position: 'absolute', inset: 0,
@@ -448,6 +685,20 @@ export default function Results({
                   }}
                 />
               )}
+
+              {/* Freehand laser spots */}
+              {laserSpots.map((spot, sidx) => (
+                <div key={`spot-${sidx}`} style={{
+                  position: 'absolute', left: `${spot.x}%`, top: `${spot.y}%`,
+                  width: 22, height: 22, borderRadius: '50%',
+                  border: '1.5px solid #2dd4bf', background: 'rgba(45,212,191,0.25)',
+                  boxShadow: '0 0 10px #14b8a6',
+                  transform: 'translate(-50%,-50%)', pointerEvents: 'none', zIndex: 35,
+                  animation: 'laser-pulse 1.2s infinite',
+                }}>
+                  <div style={{ position: 'absolute', top: '50%', left: '50%', width: 4, height: 4, borderRadius: '50%', background: '#ffffff', transform: 'translate(-50%,-50%)' }} />
+                </div>
+              ))}
 
               {/* Empty state badge */}
               {showPins && lesions.length === 0 && (
@@ -467,13 +718,39 @@ export default function Results({
                 const lt    = lesion.lt;
                 const isHov = hoveredId === lesion.id;
                 const shouldPulse = isHov || idx < 20;
+                const isTargeted = selectedLaserLesionIds.includes(lesion.id);
+
                 return (
                   <div key={lesion.id}
-                    style={{ position: 'absolute', left: `${lesion.x}%`, top: `${lesion.y}%`, zIndex: isHov ? 30 : 10 }}
+                    style={{ position: 'absolute', left: `${lesion.x}%`, top: `${lesion.y}%`, zIndex: isTargeted ? 40 : (isHov ? 30 : 10) }}
                     onMouseEnter={() => setHoveredId(lesion.id)}
                     onMouseLeave={() => setHoveredId(null)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (laserMode) {
+                        setSelectedLaserLesionIds(prev =>
+                          prev.includes(lesion.id) ? prev.filter(id => id !== lesion.id) : [...prev, lesion.id]
+                        );
+                      }
+                    }}
                   >
-                    {shouldPulse && (
+                    {/* Laser Target Aiming Reticle */}
+                    {isTargeted && (
+                      <div style={{
+                        position: 'absolute', width: 26, height: 26, borderRadius: '50%',
+                        border: '1.5px dashed #2dd4bf',
+                        boxShadow: '0 0 10px #14b8a6, inset 0 0 6px rgba(45,212,191,0.4)',
+                        animation: 'laser-spin 4s linear infinite',
+                        transform: 'translate(-50%,-50%)', pointerEvents: 'none',
+                      }}>
+                        <div style={{ position: 'absolute', top: -3, left: '50%', transform: 'translateX(-50%)', width: 1.5, height: 5, background: '#2dd4bf' }} />
+                        <div style={{ position: 'absolute', bottom: -3, left: '50%', transform: 'translateX(-50%)', width: 1.5, height: 5, background: '#2dd4bf' }} />
+                        <div style={{ position: 'absolute', left: -3, top: '50%', transform: 'translateY(-50%)', width: 5, height: 1.5, background: '#2dd4bf' }} />
+                        <div style={{ position: 'absolute', right: -3, top: '50%', transform: 'translateY(-50%)', width: 5, height: 1.5, background: '#2dd4bf' }} />
+                      </div>
+                    )}
+
+                    {shouldPulse && !isTargeted && (
                       <div style={{
                         position: 'absolute', width: 20, height: 20, borderRadius: '50%',
                         border: `1.5px solid ${lt.color}`,
@@ -482,17 +759,21 @@ export default function Results({
                       }} />
                     )}
                     <div style={{
-                      width: isHov ? 16 : 9, height: isHov ? 16 : 9,
+                      width: isTargeted ? 16 : (isHov ? 16 : 9), height: isTargeted ? 16 : (isHov ? 16 : 9),
                       borderRadius: '50%',
-                      background: lt.color,
-                      border: `1.5px solid #ffffff`,
-                      boxShadow: `0 0 ${isHov ? 10 : 3}px ${lt.color}`,
+                      background: isTargeted ? '#042f2e' : lt.color,
+                      border: isTargeted ? '1.5px solid #2dd4bf' : `1.5px solid #ffffff`,
+                      boxShadow: isTargeted ? '0 0 10px #14b8a6' : `0 0 ${isHov ? 10 : 3}px ${lt.color}`,
                       transform: 'translate(-50%,-50%)',
                       transition: 'all 0.12s',
-                      cursor: 'crosshair',
+                      cursor: laserMode ? 'crosshair' : 'pointer',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
-                      {isHov && <span style={{ fontSize: 7, fontWeight: 900, color: '#fff', fontFamily: D.mono }}>{lesion.id}</span>}
+                      {isTargeted ? (
+                        <span style={{ fontSize: 8, fontWeight: 900, color: '#2dd4bf', fontFamily: D.mono }}>⚡</span>
+                      ) : (
+                        isHov && <span style={{ fontSize: 7, fontWeight: 900, color: '#fff', fontFamily: D.mono }}>{lesion.id}</span>
+                      )}
                     </div>
 
                     {/* Tooltip */}
@@ -501,14 +782,14 @@ export default function Results({
                         position: 'absolute', bottom: '100%', left: '50%',
                         transform: 'translateX(-50%) translateY(-8px)',
                         background: '#ffffff',
-                        border: `1.5px solid ${lt.color}`,
+                        border: `1.5px solid ${isTargeted ? '#14b8a6' : lt.color}`,
                         borderRadius: 8, padding: '8px 12px',
                         whiteSpace: 'nowrap', zIndex: 50, pointerEvents: 'none',
                         boxShadow: '0 4px 14px rgba(15,23,42,0.15)',
                         color: D.text,
                       }}>
-                        <div style={{ fontSize: 11, fontWeight: 800, color: lt.color, marginBottom: 2 }}>
-                          #{lesion.id} {lt.label}
+                        <div style={{ fontSize: 11, fontWeight: 800, color: isTargeted ? '#0d9488' : lt.color, marginBottom: 2 }}>
+                          #{lesion.id} {lt.label} {isTargeted && '⚡ [TARGETED]'}
                         </div>
                         <div style={{ fontSize: 10, color: D.sub }}>
                           {lesion.confidence != null && <>Conf: <strong style={{ color: D.text }}>{lesion.confidence}%</strong>&nbsp;&nbsp;</>}
@@ -517,6 +798,11 @@ export default function Results({
                         <div style={{ fontSize: 10, color: D.muted, marginTop: 1 }}>
                           Region: {getLesionRegion(lesion.x, lesion.y)}
                         </div>
+                        {laserMode && (
+                          <div style={{ fontSize: 9, color: '#0d9488', fontWeight: 700, marginTop: 3 }}>
+                            {isTargeted ? 'Click to remove laser target' : 'Click to target with laser'}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
@@ -574,6 +860,107 @@ export default function Results({
           display: 'flex', flexDirection: 'column', background: '#ffffff', overflow: 'hidden',
         }}>
 
+          {/* In-Silico Counterfactual Causal Report (When computed) */}
+          {counterfactualResult && (
+            <div style={{
+              margin: '14px 22px 0',
+              background: '#f0fdfa',
+              border: '1px solid #14b8a6',
+              borderRadius: 10,
+              padding: '12px 16px',
+              boxShadow: '0 4px 14px rgba(20,184,166,0.12)',
+              animation: 'fade-up 0.25s ease both',
+              flexShrink: 0,
+            }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 13 }}>⚡</span>
+                  <span style={{ fontSize: 11, fontWeight: 800, color: '#0f766e', letterSpacing: '0.04em', textTransform: 'uppercase' }}>
+                    In-Silico Causal Counterfactual Report
+                  </span>
+                </div>
+                <span style={{
+                  background: '#ccfbf1', color: '#0f766e', border: '1px solid #5eead4',
+                  fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 4,
+                }}>
+                  {counterfactualResult.causal_metrics?.causal_strength || 'Causal Grounding Confirmed'}
+                </span>
+              </div>
+
+              {/* Big Grade Comparison */}
+              <div style={{
+                display: 'grid', gridTemplateColumns: '1fr auto 1fr', alignItems: 'center', gap: 10,
+                background: '#ffffff', border: '1px solid #ccfbf1', borderRadius: 8, padding: '9px 12px',
+                marginBottom: 8,
+              }}>
+                <div>
+                  <div style={{ fontSize: 9, color: D.muted, fontWeight: 700, textTransform: 'uppercase' }}>Baseline Scan</div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#c2410c' }}>
+                    {counterfactualResult.original.label}
+                  </div>
+                  <div style={{ fontSize: 10, fontFamily: D.mono, color: D.sub }}>
+                    Conf: {counterfactualResult.original.confidence}%
+                  </div>
+                </div>
+
+                <div style={{ textAlign: 'center', color: '#0d9488', fontSize: 16, fontWeight: 900 }}>
+                  ➔
+                </div>
+
+                <div style={{ textAlign: 'right' }}>
+                  <div style={{ fontSize: 9, color: '#0d9488', fontWeight: 700, textTransform: 'uppercase' }}>Post-Laser State</div>
+                  <div style={{ fontSize: 12, fontWeight: 800, color: '#047857' }}>
+                    {counterfactualResult.counterfactual.label}
+                  </div>
+                  <div style={{ fontSize: 10, fontFamily: D.mono, color: '#0f766e' }}>
+                    Conf: {counterfactualResult.counterfactual.confidence}%
+                  </div>
+                </div>
+              </div>
+
+              {/* Metric Badges */}
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 8 }}>
+                <div style={{
+                  background: '#ffffff', border: '1px solid #99f6e4', borderRadius: 5, padding: '3px 8px',
+                  display: 'flex', alignItems: 'center', gap: 5, fontSize: 10,
+                }}>
+                  <span style={{ color: D.muted }}>Probability Delta:</span>
+                  <strong style={{ color: counterfactualResult.causal_metrics.probability_delta_pct <= 0 ? '#15803d' : '#b45309', fontFamily: D.mono }}>
+                    {counterfactualResult.causal_metrics.probability_delta_pct > 0 ? `+${counterfactualResult.causal_metrics.probability_delta_pct}` : counterfactualResult.causal_metrics.probability_delta_pct}%
+                  </strong>
+                </div>
+                <div style={{
+                  background: '#ffffff', border: '1px solid #99f6e4', borderRadius: 5, padding: '3px 8px',
+                  display: 'flex', alignItems: 'center', gap: 5, fontSize: 10,
+                }}>
+                  <span style={{ color: D.muted }}>Causal Score:</span>
+                  <strong style={{ color: '#0d9488', fontFamily: D.mono }}>
+                    {counterfactualResult.causal_metrics.causal_attribution_score}%
+                  </strong>
+                </div>
+                <div style={{
+                  background: '#ffffff', border: '1px solid #99f6e4', borderRadius: 5, padding: '3px 8px',
+                  display: 'flex', alignItems: 'center', gap: 5, fontSize: 10,
+                }}>
+                  <span style={{ color: D.muted }}>Ablated Sites:</span>
+                  <strong style={{ color: '#0f766e', fontFamily: D.mono }}>
+                    {counterfactualResult.causal_metrics.ablated_count}
+                  </strong>
+                </div>
+              </div>
+
+              {/* Clinical Verdict */}
+              <div style={{
+                fontSize: 10.5, color: '#134e4a', lineHeight: 1.45,
+                background: 'rgba(204,251,241,0.6)', borderLeft: '3px solid #0d9488',
+                padding: '6px 10px', borderRadius: '0 6px 6px 0',
+              }}>
+                <strong>Diagnostic Insight:</strong> {counterfactualResult.causal_metrics.clinical_verdict}
+              </div>
+            </div>
+          )}
+
           {/* Probability distribution */}
           <div style={{ padding: '14px 22px 12px', borderBottom: `1px solid ${D.border}`, flexShrink: 0, background: '#f8fafc' }}>
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
@@ -587,26 +974,51 @@ export default function Results({
             {GRADE_LABELS.map(g => {
               const prob   = probs[g.key] || 0;
               const isPred = g.key === sev;
+              const cfProb = counterfactualResult ? Math.round((counterfactualResult.counterfactual.probs[g.key] || 0) * 100) : null;
+              const isCfPred = counterfactualResult?.counterfactual?.severity === g.key;
+
               return (
-                <div key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 7 }}>
-                  <span style={{
-                    width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                    background: isPred ? g.color : '#cbd5e1',
-                  }} />
-                  <span style={{ fontSize: 12, minWidth: 160, color: isPred ? D.text : D.sub, fontWeight: isPred ? 700 : 500 }}>
-                    {g.name}
-                  </span>
-                  <div style={{ flex: 1, height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
-                    <div style={{
-                      height: '100%', width: `${prob}%`,
-                      background: isPred ? g.color : '#94a3b8',
-                      borderRadius: 3,
-                      animation: 'bar-grow 0.6s ease both',
+                <div key={g.key} style={{ marginBottom: counterfactualResult ? 8 : 7 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                    <span style={{
+                      width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                      background: isPred ? g.color : '#cbd5e1',
                     }} />
+                    <span style={{ fontSize: 12, minWidth: 160, color: (isPred || isCfPred) ? D.text : D.sub, fontWeight: (isPred || isCfPred) ? 700 : 500 }}>
+                      {g.name}
+                    </span>
+                    <div style={{ flex: 1, height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
+                      <div style={{
+                        height: '100%', width: `${prob}%`,
+                        background: isPred ? g.color : '#94a3b8',
+                        borderRadius: 3,
+                        animation: 'bar-grow 0.6s ease both',
+                      }} />
+                    </div>
+                    <span style={{ fontFamily: D.mono, fontSize: 11, minWidth: 36, textAlign: 'right', color: isPred ? g.color : D.muted, fontWeight: isPred ? 800 : 500 }}>
+                      {prob}%
+                    </span>
                   </div>
-                  <span style={{ fontFamily: D.mono, fontSize: 11, minWidth: 36, textAlign: 'right', color: isPred ? g.color : D.muted, fontWeight: isPred ? 800 : 500 }}>
-                    {prob}%
-                  </span>
+
+                  {/* Dual comparison bar when counterfactual result is present */}
+                  {counterfactualResult && (
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10, paddingLeft: 18, marginTop: 2 }}>
+                      <span style={{ fontSize: 10, color: '#0d9488', minWidth: 152, fontWeight: 700, fontFamily: D.mono }}>
+                        ↳ Laser Post-Test
+                      </span>
+                      <div style={{ flex: 1, height: 5, background: '#ccfbf1', borderRadius: 3, overflow: 'hidden' }}>
+                        <div style={{
+                          height: '100%', width: `${cfProb}%`,
+                          background: isCfPred ? '#0d9488' : '#5eead4',
+                          borderRadius: 3,
+                          transition: 'width 0.4s ease',
+                        }} />
+                      </div>
+                      <span style={{ fontFamily: D.mono, fontSize: 10, minWidth: 36, textAlign: 'right', color: isCfPred ? '#0d9488' : '#64748b', fontWeight: isCfPred ? 800 : 500 }}>
+                        {cfProb}%
+                      </span>
+                    </div>
+                  )}
                 </div>
               );
             })}

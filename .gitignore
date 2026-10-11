@@ -52,3 +52,8 @@ test_img*.png
 ml_script/*_report.json
 ml_script/evaluation_report_v2.json
 ml_script/model_performance.png
+
+# In-Silico Laser Surgery — runtime outputs
+Frontend/retinascan-app/public/images/heatmap_laser_*
+Frontend/retinascan-app/public/images/laser_treated_*
+Frontend/retinascan-app/public/images/test_cf*.png
