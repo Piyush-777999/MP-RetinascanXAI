@@ -101,17 +101,28 @@ flowchart TD
 
 ---
 
-## 📊 Clinical Performance & Validation
+## 📊 Clinical Performance & Validation (ResNet-50 v2)
 
-Evaluated across **APTOS 2019** (3,662 images) and validated externally on **MESSIDOR-2** (1,748 images):
+The system is powered by **`retinascan_resnet50_v2.pth`**, fine-tuned across **4,324 multi-center images** (combining APTOS 2019 and MESSIDOR-2 to ensure robust multi-camera generalization). Evaluation is performed on a **held-out test cohort of 1,082 images** (20% held-out from each dataset):
 
-| Metric | Measured Value | Clinical Target (SIH) | Status |
-| :--- | :---: | :---: | :---: |
-| **Sensitivity (Referable DR: Grade ≥ 2)** | **97.6%** | $\ge 90.0\%$ | ✅ Exceeded |
-| **Specificity (Referable DR)** | **89.2%** | $\ge 85.0\%$ | ✅ Exceeded |
-| **AUC-ROC (Area Under Curve)** | **0.978** | $\ge 0.950$ | ✅ Gold Standard |
-| **Overall 5-Class Ordinal Accuracy** | **79.4%** | — | High Concordance |
-| **Referral Decision Threshold** | **0.1162** | (Youden's J Optimized) | Calibrated |
+| Metric | Model v2 (Multi-Center Held-Out) | SIH Target | Clinical Significance | Status |
+| :--- | :---: | :---: | :--- | :---: |
+| **Sensitivity (Referable DR: Grade ≥ 2)** | **93.3%** (`0.9332`) | $\ge 90.0\%$ | Detects 363 out of 389 positive cases | ✅ Met |
+| **Specificity (Referable DR)** | **86.2%** (`0.8615`) | $\ge 85.0\%$ | Accurately clears 597 out of 693 non-referable cases | ✅ Met |
+| **AUC-ROC** | **0.9702** | $\ge 0.950$ | High discriminatory power across fundus camera types | ✅ Gold Standard |
+| **Negative Predictive Value (NPV)** | **95.8%** (`0.9583`) | — | High rule-out safety for rural community screening | ✅ High Confidence |
+| **Positive Predictive Value (PPV)** | **79.1%** (`0.7908`) | — | Reliable specialist referral prioritization | ✅ Calibrated |
+| **F1-Score** | **0.8561** | — | Balanced precision-recall trade-off | ✅ Robust |
+| **Optimal Decision Threshold** | **0.1657** | — | Calibrated via Youden's J Index on validation ROC | ✅ Locked |
+| **Overall 5-Class Accuracy** | **72.0%** | — | 5-stage ordinal classification | ✅ High Concordance |
+
+### 🔍 Held-Out Validation Confusion Matrix (1,082 Images)
+```
+                   Predicted Non-Referable    Predicted Referable (≥ Grade 2)
+Actual Non-Referable         597 (TN)                      96 (FP)
+Actual Referable              26 (FN)                     363 (TP)
+```
+> **Clinical Safety Note:** Out of 389 referable diabetic retinopathy patients in the test split, the model missed **only 26 cases** ($\text{NPV} = 95.8\%$), ensuring patients requiring urgent photocoagulation or anti-VEGF therapy are safely triaged.
 
 ---
 
