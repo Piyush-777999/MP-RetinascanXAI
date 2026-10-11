@@ -8,21 +8,22 @@ import Queue        from './components/Queue.jsx';
 import Canvas       from './components/Canvas.jsx';
 import Referral     from './components/Referral.jsx';
 import Admin        from './components/Admin.jsx';
-import { allPatients, demoPresets, imagePaths } from './data.js';
+import { demoPresets } from './data.js';
 
 // All valid screen names
 const SCREENS = ['home','upload','qualitycheck','processing','results','queue','canvas','referral','admin'];
 
-// Screens that render WITHOUT the shared header/footer (full-screen experiences)
-const FULLSCREEN_SCREENS = ['home', 'processing', 'admin'];
-
 export default function App() {
-  const [screen,         setScreen]         = useState('home');
-  const [patient,        setPatient]         = useState(demoPresets[2]);
-  const [selectedEye,    setSelectedEye]     = useState('od');
-  const [heatmapUrl,     setHeatmapUrl]      = useState('');
-  const [severity,       setSeverity]        = useState(2);
+  const [screen,           setScreen]           = useState('home');
+  const [patient,          setPatient]          = useState(demoPresets[2]);
+  const [selectedEye,      setSelectedEye]      = useState('od');
+  const [heatmapUrl,       setHeatmapUrl]       = useState('');
+  const [severity,         setSeverity]         = useState(2);
   const [uploadedImageUrl, setUploadedImageUrl] = useState('');
+  const [allProbs,         setAllProbs]         = useState(null);
+  const [lesions,          setLesions]          = useState([]);
+  const [lesionSummary,    setLesionSummary]    = useState(null);
+  const [,                 setApiResponse]      = useState(null);
 
   // ── Ctrl+Shift+R → demo reset ──────────────────────────────────────────────
   useEffect(() => {
@@ -35,6 +36,10 @@ export default function App() {
         setHeatmapUrl('');
         setSeverity(2);
         setUploadedImageUrl('');
+        setAllProbs(null);
+        setLesions([]);
+        setLesionSummary(null);
+        setApiResponse(null);
       }
     }
     window.addEventListener('keydown', handleReset);
@@ -54,6 +59,11 @@ export default function App() {
     setSeverity(sev);
     setSelectedEye('od');
     setHeatmapUrl(`/images/heatmap_${sev}_od.jpg`);
+    setUploadedImageUrl('');
+    setAllProbs(null);
+    setLesions([]);
+    setLesionSummary(null);
+    setApiResponse(null);
   }
 
   const LEVEL_LABELS = [
@@ -68,58 +78,73 @@ export default function App() {
     const tempPatient = {
       id: `#DR-${Math.floor(10000 + Math.random() * 90000)}`,
       name: file.name,
+      fullName: file.name.replace(/\.[^/.]+$/, ''),
       severity: 2,
       label: 'Analysing...',
       confidence: null,
+      age: 55,
+      gender: 'M',
+      village: 'Live Scan Intake',
     };
     setPatient(tempPatient);
     setSelectedEye('od');
+    setHeatmapUrl('');
+    setAllProbs(null);
+    setLesions([]);
+    setLesionSummary(null);
 
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const response = await fetch('http://localhost:8000/upload', { method: 'POST', body: formData });
+      const response = await fetch('http://localhost:8000/upload', {
+        method: 'POST',
+        body: formData,
+      });
 
-      if (response.ok) {
-        const data = await response.json();
-        
-        // Handle explicit OOD validation rejection from backend
-        if (data.mode === 'error') {
-          alert(`Image Validation Failed:\n${data.error}\n\nPlease upload a valid retinal fundus scan.`);
-          setScreen('upload');
-          return;
-        }
-        // normal successful response handling
-        const realSev = data.severity ?? 2;
-        setSeverity(realSev);
-        setHeatmapUrl(data.heatmap_url || `/images/heatmap_${realSev}_od.jpg`);
-        setPatient({
-          id: tempPatient.id,
-          name: file.name,
-          severity: realSev,
-          label: data.label || LEVEL_LABELS[realSev],
-          confidence: data.confidence ?? null,
-          action: data.action || '',
-          mode: data.mode || 'real',
-        });
-      } else {
-        // Backend error — fall back to filename-based mock
-        const baseName = file.name.split('.')[0];
-        const parts    = baseName.split('_');
-        let sev = 2;
-        if (parts.length > 1 && !isNaN(parseInt(parts[1]))) sev = parseInt(parts[1]);
-        else if (!isNaN(parseInt(baseName))) sev = parseInt(baseName);
-        sev = Math.min(4, Math.max(0, sev));
-        setSeverity(sev);
-        setHeatmapUrl(`/images/heatmap_${sev}_od.jpg`);
-        const fallback = allPatients.find(p => p.severity === sev) || demoPresets.find(p => p.severity === sev) || { ...tempPatient, severity: sev };
-        setPatient(fallback);
+      if (!response.ok) {
+        throw new Error(`Server returned status HTTP ${response.status}`);
       }
-    } catch (_) {
-      // Silently fall back — never show a raw error to judges
-      setSeverity(2);
-      setHeatmapUrl('/images/heatmap_2_od.jpg');
-      setPatient({ ...tempPatient, severity: 2, label: 'Moderate NPDR (offline)' });
+
+      const data = await response.json();
+      setApiResponse(data);
+
+      // Handle explicit OOD validation rejection from backend
+      if (data.mode === 'error') {
+        alert(`Image Validation Failed:\n${data.error || 'Invalid or non-fundus scan detected.'}\n\nPlease upload a valid retinal fundus scan.`);
+        setScreen('upload');
+        return;
+      }
+
+      // Normal successful response handling
+      const realSev = typeof data.severity === 'number' ? data.severity : 2;
+      setSeverity(realSev);
+      setHeatmapUrl(data.heatmap_url || '');
+
+      // Consume real data, safely defaulting if missing (P2 still implementing)
+      const realProbs = Array.isArray(data.all_probs) ? data.all_probs : null;
+      const realLesions = Array.isArray(data.lesions) ? data.lesions : [];
+      const realSummary = data.lesion_summary || null;
+
+      setAllProbs(realProbs);
+      setLesions(realLesions);
+      setLesionSummary(realSummary);
+
+      setPatient({
+        ...tempPatient,
+        severity: realSev,
+        label: data.label || LEVEL_LABELS[realSev] || `Grade ${realSev}`,
+        confidence: data.confidence != null ? data.confidence : null,
+        action: data.action || '',
+        mode: data.mode || 'real',
+        heatmap_url: data.heatmap_url || '',
+        all_probs: realProbs,
+        lesions: realLesions,
+        lesion_summary: realSummary,
+      });
+    } catch (err) {
+      console.error('Backend upload request failed:', err);
+      alert('Backend connection error: Unable to reach the API server on http://localhost:8000.\nPlease verify the backend server is running and try again.');
+      setScreen('upload');
     }
   };
 
@@ -127,7 +152,7 @@ export default function App() {
   if (screen === 'home')         return <Home navigate={navigate} />;
   if (screen === 'qualitycheck') return <QualityCheck navigate={navigate} />;
   if (screen === 'processing')   return <Processing navigate={navigate} patient={patient} />;
-  if (screen === 'admin')      return <Admin navigate={navigate} />;
+  if (screen === 'admin')        return <Admin navigate={navigate} />;
 
   // ── Screened with minimal top chrome ────────────────────────────────────
   return (
@@ -207,14 +232,14 @@ export default function App() {
 
       {/* Screen content */}
       <div style={{ flex: 1, paddingTop: 56 }}>
-        {screen === 'upload'   && (
+        {screen === 'upload' && (
           <Upload
             navigate={navigate}
             onSelectPatient={onSelectPatient}
             handleUpload={handleUpload}
           />
         )}
-        {screen === 'results'  && (
+        {screen === 'results' && (
           <Results
             navigate={navigate}
             patient={patient}
@@ -223,10 +248,13 @@ export default function App() {
             setSelectedEye={setSelectedEye}
             heatmapUrl={heatmapUrl}
             uploadedImageUrl={uploadedImageUrl}
+            allProbs={allProbs}
+            lesions={lesions}
+            lesionSummary={lesionSummary}
             onQueue={() => navigate('queue')}
           />
         )}
-        {screen === 'queue'    && (
+        {screen === 'queue' && (
           <Queue
             navigate={navigate}
             patient={patient}
@@ -234,7 +262,7 @@ export default function App() {
             selectedEye={selectedEye}
           />
         )}
-        {screen === 'canvas'   && (
+        {screen === 'canvas' && (
           <Canvas
             navigate={navigate}
             patient={patient}
@@ -242,6 +270,10 @@ export default function App() {
             selectedEye={selectedEye}
             setSelectedEye={setSelectedEye}
             heatmapUrl={heatmapUrl}
+            uploadedImageUrl={uploadedImageUrl}
+            allProbs={allProbs}
+            lesions={lesions}
+            lesionSummary={lesionSummary}
             onRefer={() => navigate('referral')}
             onBack={() => navigate('queue')}
           />

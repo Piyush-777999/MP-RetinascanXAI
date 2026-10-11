@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { demoPresets, severityColors } from '../data.js';
+import { demoPresets } from '../data.js';
 
 const D = {
   bg:    '#0a0f14', panel: '#111820', border: '#1e2d3d',
@@ -7,7 +7,6 @@ const D = {
   mono:  'JetBrains Mono, "Courier New", monospace',
 };
 
-const SEVERITY_LABELS = ['No DR', 'Mild NPDR', 'Moderate NPDR', 'Severe NPDR', 'Prolif. DR'];
 const SEVERITY_COLORS = ['#22c55e', '#84cc16', '#f59e0b', '#ea580c', '#dc2626'];
 
 /* Auto-generate PHC ID */
@@ -217,7 +216,9 @@ export default function Upload({ navigate, onSelectPatient, handleUpload }) {
                   display: 'flex', alignItems: 'center', gap: 16,
                   padding: '16px 18px', borderRadius: 12,
                   background: isSelected ? `${sCol}12` : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${isSelected ? sCol + '60' : D.border}`,
+                  borderTop: `1px solid ${isSelected ? sCol + '60' : D.border}`,
+                  borderRight: `1px solid ${isSelected ? sCol + '60' : D.border}`,
+                  borderBottom: `1px solid ${isSelected ? sCol + '60' : D.border}`,
                   borderLeft: `4px solid ${sCol}`,
                   transition: 'all 0.15s',
                 }}>
