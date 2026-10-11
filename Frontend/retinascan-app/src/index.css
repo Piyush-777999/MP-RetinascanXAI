@@ -1,18 +1,21 @@
-/* RetinaScan XAI — Global Styles */
+/* RetinaScan XAI — Clinical Hospital Light Theme */
 @import "tailwindcss";
 
 :root {
-  --bg-base: #030c14;
-  --bg-surface: #071520;
-  --bg-card: rgba(255,255,255,0.04);
-  --border-card: rgba(255,255,255,0.08);
-  --teal: #00d4aa;
-  --teal-dim: #00a085;
-  --teal-glow: rgba(0, 212, 170, 0.15);
-  --cyan: #22d3ee;
-  --text-primary: #f0f6ff;
-  --text-secondary: #8fa3bb;
-  --text-muted: #4d6278;
+  --bg-base: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-card: #ffffff;
+  --border-card: #e2e8f0;
+  --border-subtle: #edf2f7;
+  --blue-primary: #0284c7;
+  --blue-hover: #0369a1;
+  --blue-light: #f0f9ff;
+  --blue-glow: rgba(2, 132, 199, 0.12);
+  --teal: #0d9488;
+  --text-primary: #0f172a;
+  --text-secondary: #475569;
+  --text-muted: #64748b;
+  --text-dim: #94a3b8;
 }
 
 *, *::before, *::after { box-sizing: border-box; }
@@ -20,135 +23,85 @@ html, body { margin: 0; padding: 0; }
 body {
   background: var(--bg-base);
   color: var(--text-primary);
-  font-family: 'Inter', sans-serif;
-  overscroll-behavior: none;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
-::-webkit-scrollbar { display: none; }
 
-/* ── Dot grid background ────────────────────────────────────────────── */
-.dot-grid {
-  background-image: radial-gradient(circle, rgba(255,255,255,0.07) 1px, transparent 1px);
-  background-size: 28px 28px;
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #cbd5e1;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #94a3b8;
 }
 
-/* ── Glass card ─────────────────────────────────────────────────────── */
+/* ── Clean clinical background ────────────────────────────────────────────── */
+.dot-grid {
+  background-image: radial-gradient(circle, rgba(15, 23, 42, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* ── Medical cards ─────────────────────────────────────────────────── */
 .glass {
-  background: var(--bg-card);
-  border: 1px solid var(--border-card);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
+  background: #ffffff;
+  border: 1px solid #e2e8f0;
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
 }
 .glass-teal {
-  background: rgba(0, 212, 170, 0.06);
-  border: 1px solid rgba(0, 212, 170, 0.2);
-  backdrop-filter: blur(16px);
+  background: #f0fdfa;
+  border: 1px solid #ccfbf1;
 }
 .glass-hover:hover {
-  background: rgba(255,255,255,0.06);
-  border-color: rgba(0, 212, 170, 0.3);
-  box-shadow: 0 0 24px rgba(0, 212, 170, 0.08);
+  background: #ffffff;
+  border-color: #cbd5e1;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
 }
 
-/* ── Glow effects ───────────────────────────────────────────────────── */
-.glow-teal { box-shadow: 0 0 40px rgba(0, 212, 170, 0.25), 0 0 80px rgba(0, 212, 170, 0.1); }
-.glow-teal-sm { box-shadow: 0 0 16px rgba(0, 212, 170, 0.3); }
-.text-gradient {
-  background: linear-gradient(135deg, #ffffff 0%, #00d4aa 50%, #22d3ee 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-.text-gradient-subtle {
-  background: linear-gradient(135deg, #e2f0fb 0%, #00d4aa 100%);
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  background-clip: text;
-}
-
-/* ── Teal button ─────────────────────────────────────────────────────── */
-.btn-teal {
-  background: linear-gradient(135deg, #00d4aa, #00a3b4);
-  color: #020c12;
-  font-weight: 700;
-  border: none;
+/* ── Primary clinical buttons ─────────────────────────────────────────── */
+.btn-teal, .btn-primary {
+  background: #0284c7;
+  color: #ffffff;
+  font-weight: 600;
+  border: 1px solid #0284c7;
+  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(2, 132, 199, 0.2);
 }
-.btn-teal:hover {
-  background: linear-gradient(135deg, #00e5bb, #00b8cc);
-  box-shadow: 0 0 24px rgba(0, 212, 170, 0.4);
+.btn-teal:hover, .btn-primary:hover {
+  background: #0369a1;
+  border-color: #0369a1;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);
   transform: translateY(-1px);
 }
 .btn-ghost {
-  background: rgba(255,255,255,0.05);
-  border: 1px solid rgba(255,255,255,0.12);
-  color: var(--text-primary);
+  background: #ffffff;
+  border: 1px solid #cbd5e1;
+  color: #334155;
+  font-weight: 500;
+  border-radius: 8px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.15s ease;
 }
 .btn-ghost:hover {
-  background: rgba(255,255,255,0.09);
-  border-color: rgba(255,255,255,0.2);
+  background: #f8fafc;
+  border-color: #94a3b8;
+  color: #0f172a;
 }
 
-/* ── Animations ─────────────────────────────────────────────────────── */
-@keyframes spin-slow {
-  0%   { transform: rotate(0deg); }
-  100% { transform: rotate(360deg); }
-}
-@keyframes spin-ccw {
-  0%   { transform: rotate(0deg); }
-  100% { transform: rotate(-360deg); }
-}
-@keyframes pulse-ring {
-  0%, 100% { transform: scale(1);   opacity: 0.6; }
-  50%       { transform: scale(1.1); opacity: 0.15; }
-}
-@keyframes scan-line {
-  0%   { top: 0%; opacity: 1; }
-  90%  { top: 100%; opacity: 1; }
-  100% { top: 100%; opacity: 0; }
-}
-@keyframes fadeInUp {
-  from { opacity: 0; transform: translateY(18px); }
-  to   { opacity: 1; transform: translateY(0); }
-}
-@keyframes float {
-  0%, 100% { transform: translateY(0px); }
-  50%       { transform: translateY(-8px); }
-}
-@keyframes shimmer {
-  0%   { background-position: -200% center; }
-  100% { background-position: 200% center; }
-}
-@keyframes blink-cursor {
-  0%, 100% { opacity: 1; }
-  50%       { opacity: 0; }
-}
-
-.animate-spin-slow   { animation: spin-slow 6s linear infinite; }
-.animate-spin-ccw    { animation: spin-ccw 10s linear infinite; }
-.animate-pulse-ring  { animation: pulse-ring 2.5s ease-in-out infinite; }
-.animate-scan-line   { animation: scan-line 3s ease-in-out infinite; }
-.animate-fade-up     { animation: fadeInUp 0.6s ease-out both; }
-.animate-float       { animation: float 4s ease-in-out infinite; }
-.animate-blink       { animation: blink-cursor 1.2s step-end infinite; }
-
-/* ── Severity badge colors ──────────────────────────────────────────── */
-.sev-0 { color: #34d399; background: rgba(52,211,153,0.12); border-color: rgba(52,211,153,0.3); }
-.sev-1 { color: #fbbf24; background: rgba(251,191,36,0.12); border-color: rgba(251,191,36,0.3); }
-.sev-2 { color: #fb923c; background: rgba(251,146,60,0.12); border-color: rgba(251,146,60,0.3); }
-.sev-3 { color: #f87171; background: rgba(248,113,113,0.12); border-color: rgba(248,113,113,0.3); }
-.sev-4 { color: #c084fc; background: rgba(192,132,252,0.12); border-color: rgba(192,132,252,0.3); }
-
-/* ── Orb gradient decorations ───────────────────────────────────────── */
-.orb {
-  position: absolute;
-  border-radius: 50%;
-  filter: blur(80px);
-  pointer-events: none;
-  z-index: 0;
-}
+/* ── Severity badge colors (Clean Medical Palette) ──────────────────── */
+.sev-0 { color: #15803d; background: #dcfce7; border: 1px solid #bbf7d0; }
+.sev-1 { color: #b45309; background: #fef3c7; border: 1px solid #fde68a; }
+.sev-2 { color: #c2410c; background: #ffedd5; border: 1px solid #fed7aa; }
+.sev-3 { color: #b91c1c; background: #fee2e2; border: 1px solid #fecaca; }
+.sev-4 { color: #991b1b; background: #fef2f2; border: 1px solid #fca5a5; }
 
 @media print { .no-print { display: none !important; } }

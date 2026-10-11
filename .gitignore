@@ -9,6 +9,10 @@ __pycache__/
 venv/
 *.egg-info/
 
+# Virtual environments (project-specific)
+ml_script/train_env/
+env/
+
 # Node
 node_modules/
 dist/
@@ -30,3 +34,21 @@ test_images/
 
 # Logs
 *.log
+
+# Temp
+temp/
+tmp/
+
+# Runtime-generated heatmaps
+Frontend/retinascan-app/public/images/heatmap_live_*
+
+# Test artifacts
+Frontend/retinascan-app/public/images/test_cam.jpg
+Frontend/retinascan-app/public/images/test_img1_cam.jpg
+test_aligned_img*.png
+test_img*.png
+
+# ML reports & generated plots
+ml_script/*_report.json
+ml_script/evaluation_report_v2.json
+ml_script/model_performance.png

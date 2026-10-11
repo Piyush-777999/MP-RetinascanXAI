@@ -21,9 +21,10 @@ export default function App() {
   const [severity,         setSeverity]         = useState(2);
   const [uploadedImageUrl, setUploadedImageUrl] = useState('');
   const [allProbs,         setAllProbs]         = useState(null);
-  const [lesions,          setLesions]          = useState([]);
-  const [lesionSummary,    setLesionSummary]    = useState(null);
+  const [lesions,          setLesions]          = useState(demoPresets[2].lesions || []);
+  const [lesionSummary,    setLesionSummary]    = useState(demoPresets[2].lesionSummary || null);
   const [,                 setApiResponse]      = useState(null);
+  const [uploadError,      setUploadError]      = useState(null);
 
   // ── Ctrl+Shift+R → demo reset ──────────────────────────────────────────────
   useEffect(() => {
@@ -58,11 +59,11 @@ export default function App() {
     const sev = p?.severity ?? 2;
     setSeverity(sev);
     setSelectedEye('od');
-    setHeatmapUrl(`/images/heatmap_${sev}_od.jpg`);
+    setHeatmapUrl(`/images/heatmap_${sev}_od.png`);
     setUploadedImageUrl('');
     setAllProbs(null);
-    setLesions([]);
-    setLesionSummary(null);
+    setLesions(p?.lesions || []);
+    setLesionSummary(p?.lesionSummary || null);
     setApiResponse(null);
   }
 
@@ -71,6 +72,7 @@ export default function App() {
   ];
 
   const handleUpload = async (file) => {
+    setUploadError(null);
     setScreen('qualitycheck');
     const localUrl = URL.createObjectURL(file);
     setUploadedImageUrl(localUrl);
@@ -110,7 +112,7 @@ export default function App() {
 
       // Handle explicit OOD validation rejection from backend
       if (data.mode === 'error') {
-        alert(`Image Validation Failed:\n${data.error || 'Invalid or non-fundus scan detected.'}\n\nPlease upload a valid retinal fundus scan.`);
+        setUploadError(data.error || 'Scan validation failed: Not an ocular fundus scan.');
         setScreen('upload');
         return;
       }
@@ -143,7 +145,7 @@ export default function App() {
       });
     } catch (err) {
       console.error('Backend upload request failed:', err);
-      alert('Backend connection error: Unable to reach the API server on http://localhost:8000.\nPlease verify the backend server is running and try again.');
+      setUploadError('Backend connection error: Unable to reach the API server on http://localhost:8000.');
       setScreen('upload');
     }
   };
@@ -156,54 +158,58 @@ export default function App() {
 
   // ── Screened with minimal top chrome ────────────────────────────────────
   return (
-    <div style={{ minHeight: '100vh', background: '#030c14', display: 'flex', flexDirection: 'column' }}>
+    <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
 
-      {/* Minimal nav bar for inner screens */}
+      {/* Hospital clinical nav bar for inner screens */}
       <nav style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
         height: 56,
-        background: 'rgba(3,12,20,0.9)',
-        borderBottom: '1px solid rgba(255,255,255,0.07)',
-        backdropFilter: 'blur(20px)',
-        WebkitBackdropFilter: 'blur(20px)',
+        background: '#ffffff',
+        borderBottom: '1px solid #e2e8f0',
+        boxShadow: '0 1px 3px rgba(15,23,42,0.05)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 32px',
+        padding: '0 28px',
       }}>
         {/* Logo */}
         <button onClick={() => navigate('home')} style={{
           all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
         }}>
           <div style={{
-            width: 32, height: 32, borderRadius: 9,
-            background: 'rgba(0,212,170,0.12)', border: '1px solid rgba(0,212,170,0.3)',
+            width: 32, height: 32, borderRadius: 8,
+            background: 'linear-gradient(135deg, #0284c7, #0369a1)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
+            boxShadow: '0 2px 6px rgba(2,132,199,0.25)',
           }}>
             <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <ellipse cx="9" cy="9" rx="7.5" ry="5" stroke="#00d4aa" strokeWidth="1.5"/>
-              <circle cx="9" cy="9" r="2.5" stroke="#00d4aa" strokeWidth="1.5"/>
-              <circle cx="9" cy="9" r="1" fill="#00d4aa"/>
+              <ellipse cx="9" cy="9" rx="7.5" ry="5" stroke="#ffffff" strokeWidth="1.6"/>
+              <circle cx="9" cy="9" r="2.5" stroke="#ffffff" strokeWidth="1.6"/>
+              <circle cx="9" cy="9" r="1" fill="#ffffff"/>
             </svg>
           </div>
-          <span style={{ fontFamily: 'Manrope, sans-serif', fontSize: 15, fontWeight: 800, color: '#f0f6ff', letterSpacing: '-0.01em' }}>RetinaScan XAI</span>
+          <div>
+            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 15, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>RetinaScan XAI</span>
+            <span style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#0284c7', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Clinical Workstation</span>
+          </div>
         </button>
 
         {/* Nav steps */}
-        <div style={{ display: 'flex', gap: 4 }}>
+        <div style={{ display: 'flex', gap: 6, background: '#f1f5f9', padding: '3px 4px', borderRadius: 10, border: '1px solid #e2e8f0' }}>
           {[
-            { key: 'upload',   label: 'Intake' },
-            { key: 'results',  label: 'Results' },
-            { key: 'queue',    label: 'Queue' },
-            { key: 'canvas',   label: 'Canvas' },
-            { key: 'referral', label: 'Referral' },
+            { key: 'upload',   label: 'Patient Intake' },
+            { key: 'results',  label: 'Diagnostic Results' },
+            { key: 'queue',    label: 'Triage Queue' },
+            { key: 'canvas',   label: 'PACS Canvas' },
+            { key: 'referral', label: 'Referral Slip' },
           ].map(({ key, label }) => (
             <button key={key} onClick={() => navigate(key)} style={{
               all: 'unset', cursor: 'pointer',
-              padding: '5px 14px', borderRadius: 8,
+              padding: '6px 14px', borderRadius: 7,
               fontSize: 12, fontWeight: 600,
-              color: screen === key ? '#00d4aa' : '#4d6278',
-              background: screen === key ? 'rgba(0,212,170,0.1)' : 'transparent',
-              border: screen === key ? '1px solid rgba(0,212,170,0.25)' : '1px solid transparent',
-              transition: 'all 0.15s',
+              color: screen === key ? '#0284c7' : '#475569',
+              background: screen === key ? '#ffffff' : 'transparent',
+              border: screen === key ? '1px solid #cbd5e1' : '1px solid transparent',
+              boxShadow: screen === key ? '0 1px 3px rgba(15,23,42,0.06)' : 'none',
+              transition: 'all 0.15s ease',
             }}>{label}</button>
           ))}
         </div>
@@ -212,15 +218,15 @@ export default function App() {
         {patient?.name && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12 }}>
             <div style={{ textAlign: 'right' }}>
-              <div style={{ color: '#f0f6ff', fontWeight: 600 }}>{patient.fullName || patient.name}</div>
-              <div style={{ color: '#4d6278', fontFamily: 'JetBrains Mono, monospace', fontSize: 10 }}>{patient.id}</div>
+              <div style={{ color: '#0f172a', fontWeight: 600 }}>{patient.fullName || patient.name}</div>
+              <div style={{ color: '#64748b', fontFamily: 'JetBrains Mono, monospace', fontSize: 10 }}>{patient.id}</div>
             </div>
             {patient.severity != null && (
               <span style={{
-                padding: '3px 10px', borderRadius: 20,
-                background: ['rgba(34,197,94,0.15)','rgba(132,204,22,0.15)','rgba(245,158,11,0.15)','rgba(234,88,12,0.15)','rgba(220,38,38,0.15)'][patient.severity] || 'rgba(255,255,255,0.07)',
-                border: `1px solid ${['#22c55e','#84cc16','#f59e0b','#ea580c','#dc2626'][patient.severity] || '#4d6278'}50`,
-                color: ['#22c55e','#84cc16','#f59e0b','#ea580c','#dc2626'][patient.severity] || '#4d6278',
+                padding: '4px 11px', borderRadius: 20,
+                background: ['#dcfce7','#fef3c7','#ffedd5','#fee2e2','#fef2f2'][patient.severity] || '#f1f5f9',
+                border: `1px solid ${['#bbf7d0','#fde68a','#fed7aa','#fecaca','#fca5a5'][patient.severity] || '#e2e8f0'}`,
+                color: ['#15803d','#b45309','#c2410c','#b91c1c','#991b1b'][patient.severity] || '#475569',
                 fontSize: 11, fontWeight: 700,
               }}>
                 Level {patient.severity}
@@ -237,6 +243,8 @@ export default function App() {
             navigate={navigate}
             onSelectPatient={onSelectPatient}
             handleUpload={handleUpload}
+            uploadError={uploadError}
+            clearUploadError={() => setUploadError(null)}
           />
         )}
         {screen === 'results' && (

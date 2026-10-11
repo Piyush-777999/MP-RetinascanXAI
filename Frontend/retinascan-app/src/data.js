@@ -29,10 +29,55 @@ export const severityColors = {
 
 // 4 Preset Demo Patients for the Upload screen
 export const demoPresets = [
-  { id: "#DR-88220", name: "Priya S.",   fullName: "Priya Sharma",      age: 34, gender: "F", village: "PHC Mandawar",          severity: 0, label: "No Apparent DR",  confidence: 98.7, findings: "Clean vitreous, no lesions detected.",             status: "Routine 12-mo",      diabetesDuration: 4,  hba1c: 6.2 },
-  { id: "#DR-88221", name: "Arjun M.",   fullName: "Arjun Mehta",        age: 49, gender: "M", village: "Kishangarh Sub-Center", severity: 1, label: "Mild NPDR",       confidence: 89.1, findings: "Isolated microaneurysms detected.",                status: "Secondary Review",   diabetesDuration: 7,  hba1c: 7.4 },
-  { id: "#DR-88219", name: "Geeta S. ★", fullName: "Smt. Geeta Sharma",  age: 58, gender: "F", village: "Alwar District",        severity: 2, label: "Moderate NPDR",   confidence: 96.4, findings: "14 microaneurysms, hemorrhages, hard exudates.",  status: "Urgent Priority",    diabetesDuration: 12, hba1c: 9.1 },
-  { id: "#DR-88222", name: "Kiran D.",   fullName: "Kiran Devi",         age: 71, gender: "F", village: "Behror Mobile Unit",    severity: 3, label: "Severe NPDR",     confidence: 97.9, findings: "Cotton wool spots, venous beading.",              status: "Immediate Referral", diabetesDuration: 18, hba1c: 10.2 },
+  {
+    id: "#DR-88220", name: "Priya S.",   fullName: "Priya Sharma",      age: 34, gender: "F", village: "PHC Mandawar",          severity: 0, label: "No Apparent DR",  confidence: 98.7, findings: "Clean vitreous, no lesions detected.",             status: "Routine 12-mo",      diabetesDuration: 4,  hba1c: 6.2,
+    lesions: [],
+    lesionSummary: { microaneurysm_count: 0, hemorrhage_count: 0, exudate_count: 0, total_lesion_area_px: 0 },
+  },
+  {
+    id: "#DR-88221", name: "Arjun M.",   fullName: "Arjun Mehta",        age: 49, gender: "M", village: "Kishangarh Sub-Center", severity: 1, label: "Mild NPDR",       confidence: 89.1, findings: "Isolated microaneurysms detected.",                status: "Secondary Review",   diabetesDuration: 7,  hba1c: 7.4,
+    lesions: [
+      { id: 1, type: "microaneurysm", x: 38, y: 32, bbox: [190, 160, 202, 172], area_px: 78, confidence: 88 },
+      { id: 2, type: "microaneurysm", x: 62, y: 55, bbox: [315, 280, 326, 291], area_px: 62, confidence: 82 },
+    ],
+    lesionSummary: { microaneurysm_count: 2, hemorrhage_count: 0, exudate_count: 0, total_lesion_area_px: 140 },
+  },
+  {
+    id: "#DR-88219", name: "Geeta S. ★", fullName: "Smt. Geeta Sharma",  age: 58, gender: "F", village: "Alwar District",        severity: 2, label: "Moderate NPDR",   confidence: 96.4, findings: "14 microaneurysms, hemorrhages, hard exudates.",  status: "Urgent Priority",    diabetesDuration: 12, hba1c: 9.1,
+    lesions: [
+      { id: 1,  type: "microaneurysm", x: 35, y: 28, bbox: [175, 140, 187, 152], area_px: 82, confidence: 91 },
+      { id: 2,  type: "microaneurysm", x: 42, y: 44, bbox: [215, 225, 225, 235], area_px: 64, confidence: 87 },
+      { id: 3,  type: "microaneurysm", x: 65, y: 38, bbox: [330, 195, 342, 207], area_px: 71, confidence: 84 },
+      { id: 4,  type: "microaneurysm", x: 58, y: 62, bbox: [295, 315, 305, 325], area_px: 55, confidence: 82 },
+      { id: 5,  type: "hemorrhage",    x: 48, y: 36, bbox: [240, 180, 275, 215], area_px: 680, confidence: 89 },
+      { id: 6,  type: "hemorrhage",    x: 68, y: 52, bbox: [340, 260, 380, 300], area_px: 820, confidence: 86 },
+      { id: 7,  type: "hardExudate",   x: 32, y: 58, bbox: [160, 290, 190, 320], area_px: 450, confidence: 93 },
+      { id: 8,  type: "hardExudate",   x: 40, y: 66, bbox: [200, 335, 230, 360], area_px: 380, confidence: 90 },
+      { id: 9,  type: "hardExudate",   x: 52, y: 70, bbox: [265, 355, 290, 380], area_px: 310, confidence: 88 },
+      { id: 10, type: "hardExudate",   x: 62, y: 68, bbox: [315, 345, 340, 370], area_px: 290, confidence: 85 },
+      { id: 11, type: "microaneurysm", x: 28, y: 46, bbox: [142, 235, 152, 245], area_px: 58, confidence: 80 },
+      { id: 12, type: "microaneurysm", x: 72, y: 40, bbox: [368, 205, 378, 215], area_px: 60, confidence: 79 },
+      { id: 13, type: "hemorrhage",    x: 55, y: 26, bbox: [280, 130, 310, 160], area_px: 540, confidence: 83 },
+      { id: 14, type: "hardExudate",   x: 46, y: 74, bbox: [235, 378, 255, 398], area_px: 220, confidence: 87 },
+    ],
+    lesionSummary: { microaneurysm_count: 6, hemorrhage_count: 3, exudate_count: 5, total_lesion_area_px: 4130 },
+  },
+  {
+    id: "#DR-88222", name: "Kiran D.",   fullName: "Kiran Devi",         age: 71, gender: "F", village: "Behror Mobile Unit",    severity: 3, label: "Severe NPDR",     confidence: 97.9, findings: "Cotton wool spots, venous beading.",              status: "Immediate Referral", diabetesDuration: 18, hba1c: 10.2,
+    lesions: [
+      { id: 1,  type: "microaneurysm", x: 26, y: 24, bbox: [130, 120, 142, 132], area_px: 92, confidence: 94 },
+      { id: 2,  type: "microaneurysm", x: 44, y: 22, bbox: [225, 110, 235, 121], area_px: 75, confidence: 91 },
+      { id: 3,  type: "microaneurysm", x: 74, y: 35, bbox: [378, 178, 389, 189], area_px: 80, confidence: 88 },
+      { id: 4,  type: "hemorrhage",    x: 32, y: 40, bbox: [160, 200, 220, 260], area_px: 1840, confidence: 95 },
+      { id: 5,  type: "hemorrhage",    x: 65, y: 30, bbox: [330, 150, 390, 210], area_px: 1650, confidence: 92 },
+      { id: 6,  type: "hemorrhage",    x: 58, y: 64, bbox: [290, 320, 360, 385], area_px: 2100, confidence: 90 },
+      { id: 7,  type: "hardExudate",   x: 28, y: 68, bbox: [140, 345, 180, 385], area_px: 950, confidence: 93 },
+      { id: 8,  type: "hardExudate",   x: 38, y: 75, bbox: [195, 380, 235, 415], area_px: 780, confidence: 89 },
+      { id: 9,  type: "cottonWool",    x: 48, y: 45, bbox: [245, 230, 290, 275], area_px: 1200, confidence: 92 },
+      { id: 10, type: "cottonWool",    x: 62, y: 52, bbox: [315, 265, 355, 300], area_px: 890, confidence: 87 },
+    ],
+    lesionSummary: { microaneurysm_count: 3, hemorrhage_count: 3, exudate_count: 2, cotton_wool_count: 2, total_lesion_area_px: 9657 },
+  },
 ];
 
 // Image paths pointing to local /public/images/

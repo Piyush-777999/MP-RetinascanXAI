@@ -5,16 +5,17 @@ import {
   getLesionRegion,
 } from '../data.js';
 
-/* ── Design tokens ─────────────────────────────────────────────────────────── */
+/* ── Design tokens (Hospital Clinical Light Theme) ────────────────────────── */
 const D = {
-  bg:      '#0a0f14',
-  panel:   '#111820',
-  border:  '#1e2d3d',
-  teal:    '#00d4aa',
-  dim:     '#3a5068',
-  text:    '#e8f4f8',
-  sub:     '#7a9ab0',
-  muted:   '#3a5068',
+  bg:      '#f8fafc',
+  panel:   '#ffffff',
+  card:    '#ffffff',
+  border:  '#e2e8f0',
+  teal:    '#0284c7',
+  dim:     '#cbd5e1',
+  text:    '#0f172a',
+  sub:     '#475569',
+  muted:   '#64748b',
   mono:    'JetBrains Mono, "Courier New", monospace',
 };
 
@@ -190,12 +191,15 @@ export default function Canvas({
 
   return (
     <div style={{
-      minHeight: '100vh',
+      height: 'calc(100vh - 56px)',
+      maxHeight: 'calc(100vh - 56px)',
+      minHeight: 'calc(100vh - 56px)',
       background: D.bg,
       color: D.text,
       fontFamily: 'Inter, system-ui, sans-serif',
       display: 'flex',
       flexDirection: 'column',
+      overflow: 'hidden',
       fontSize: 13,
     }}>
 
@@ -261,15 +265,25 @@ export default function Canvas({
       </div>
 
       {/* ── Two-panel body ── */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
 
         {/* ════════════════════════════════════════════
-            LEFT PANEL — PACS Viewport
+            LEFT PANEL — PACS Viewport (STAYS FIXED ON LEFT)
         ════════════════════════════════════════════ */}
         <div style={{
-          flex: '0 0 62%', display: 'flex', flexDirection: 'column',
+          flex: '0 0 60%',
+          maxWidth: '60%',
+          height: '100%',
+          maxHeight: '100%',
+          minHeight: 0,
+          display: 'flex', flexDirection: 'column',
           borderRight: `1px solid ${D.border}`,
           background: '#08111a',
+          position: 'sticky',
+          top: 0,
+          alignSelf: 'flex-start',
+          overflow: 'hidden',
+          zIndex: 5,
         }}>
 
           {/* Toolbar */}
@@ -406,7 +420,6 @@ export default function Canvas({
                   style={{
                     position: 'absolute', inset: 0,
                     width: '100%', height: '100%', objectFit: 'cover',
-                    mixBlendMode: 'screen', opacity: 0.7,
                     pointerEvents: 'none',
                   }}
                 />
@@ -571,8 +584,8 @@ export default function Canvas({
             RIGHT PANEL — Metrics & Findings
         ════════════════════════════════════════════ */}
         <div style={{
-          flex: 1, display: 'flex', flexDirection: 'column',
-          background: D.bg, overflow: 'hidden',
+          flex: 1, minWidth: 0, minHeight: 0, display: 'flex', flexDirection: 'column',
+          background: D.bg, overflow: 'hidden', height: '100%',
         }}>
 
           {/* ── ICDR Probability Distribution ── */}
@@ -612,13 +625,12 @@ export default function Canvas({
                       {g.name}
                     </span>
                     {/* Bar */}
-                    <div style={{ flex: 1, height: 5, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+                    <div style={{ flex: 1, height: 6, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
                       <div style={{
                         height: '100%',
                         width: `${prob}%`,
-                        background: isPred ? g.color : 'rgba(255,255,255,0.15)',
+                        background: isPred ? g.color : '#e2e8f0',
                         borderRadius: 3,
-                        boxShadow: isPred ? `0 0 8px ${g.color}60` : 'none',
                         transition: 'width 0.8s cubic-bezier(0.4,0,0.2,1)',
                       }} />
                     </div>
@@ -637,7 +649,7 @@ export default function Canvas({
           </div>
 
           {/* ── Indexed findings table ── */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             {/* Table header */}
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
@@ -712,11 +724,11 @@ export default function Canvas({
                       gridTemplateColumns: '28px 90px 1fr 75px 50px',
                       padding: '8px 20px',
                       alignItems: 'center',
-                      background: isHov ? 'rgba(0,212,170,0.07)' : 'transparent',
+                      background: isHov ? '#f0f9ff' : 'transparent',
                       borderLeft: isHov ? `2px solid ${D.teal}` : '2px solid transparent',
                       transition: 'all 0.12s',
                       cursor: 'pointer',
-                      borderBottom: `1px solid rgba(255,255,255,0.03)`,
+                      borderBottom: `1px solid #f1f5f9`,
                     }}
                   >
                     {/* # */}
@@ -725,8 +737,8 @@ export default function Canvas({
                     {/* Type badge */}
                     <span style={{
                       padding: '2px 8px', borderRadius: 4,
-                      background: `${lt.color}20`,
-                      border: `1px solid ${lt.color}50`,
+                      background: `${lt.color}15`,
+                      border: `1px solid ${lt.color}40`,
                       fontFamily: D.mono, fontSize: 10, fontWeight: 700,
                       color: lt.color,
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
@@ -745,7 +757,7 @@ export default function Canvas({
                     {/* Confidence */}
                     <span style={{
                       fontFamily: D.mono, fontSize: 11, fontWeight: 700,
-                      color: lesion.confidence == null ? D.sub : lesion.confidence >= 90 ? '#22c55e' : lesion.confidence >= 80 ? D.teal : '#f59e0b',
+                      color: lesion.confidence == null ? D.sub : lesion.confidence >= 90 ? '#16a34a' : lesion.confidence >= 80 ? D.teal : '#d97706',
                     }}>
                       {lesion.confidence != null ? `${lesion.confidence}%` : '—'}
                     </span>
@@ -769,24 +781,25 @@ export default function Canvas({
                 onChange={e => setNotes(e.target.value)}
                 placeholder="Clinical notes — Dr. Arvind Mehta…"
                 style={{
-                  flex: 1, background: 'rgba(255,255,255,0.04)',
+                  flex: 1, background: '#ffffff',
                   border: `1px solid ${D.border}`, borderRadius: 6,
                   color: D.text, fontFamily: D.mono, fontSize: 11,
                   padding: '8px 10px', resize: 'none', outline: 'none',
                   lineHeight: 1.5,
                 }}
-                onFocus={e => { e.target.style.borderColor = 'rgba(0,212,170,0.4)'; }}
+                onFocus={e => { e.target.style.borderColor = '#0284c7'; }}
                 onBlur={e =>  { e.target.style.borderColor = D.border; }}
               />
               <button onClick={handleRefer} style={{
                 all: 'unset', cursor: 'pointer',
-                padding: '0 18px', borderRadius: 7,
-                background: 'rgba(0,212,170,0.18)', border: '1px solid rgba(0,212,170,0.4)',
-                fontFamily: D.mono, fontSize: 11, fontWeight: 700, color: D.teal,
+                padding: '0 20px', borderRadius: 7,
+                background: '#0284c7', color: '#ffffff',
+                boxShadow: '0 2px 6px rgba(2,132,199,0.25)',
+                fontFamily: 'Inter, sans-serif', fontSize: 12, fontWeight: 700,
                 display: 'flex', alignItems: 'center', gap: 6,
                 whiteSpace: 'nowrap',
               }}>
-                ✓ Confirm Grade
+                Confirm Grade →
               </button>
             </div>
           </div>
@@ -803,21 +816,21 @@ function ToolBtn({ active, onClick, label, accent, icon }) {
       all: 'unset', cursor: 'pointer',
       display: 'flex', alignItems: 'center', gap: 5,
       padding: '4px 10px', borderRadius: 5,
-      background: active ? (accent ? 'rgba(0,212,170,0.15)' : 'rgba(255,255,255,0.08)') : 'transparent',
-      border: `1px solid ${active ? (accent ? 'rgba(0,212,170,0.4)' : 'rgba(255,255,255,0.15)') : 'transparent'}`,
-      fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
-      color: active ? (accent ? '#00d4aa' : '#e8f4f8') : '#3a5068',
+      background: active ? '#f0f9ff' : 'transparent',
+      border: `1px solid ${active ? '#bae6fd' : '#e2e8f0'}`,
+      fontFamily: 'Inter, sans-serif', fontSize: 11, fontWeight: 600,
+      color: active ? '#0284c7' : '#475569',
       transition: 'all 0.12s',
     }}>
       {icon && <span style={{ fontSize: 10 }}>{icon}</span>}
       {accent && (
         <span style={{
           width: 12, height: 12, borderRadius: 3,
-          background: active ? '#00d4aa' : 'transparent',
-          border: `1.5px solid ${active ? '#00d4aa' : '#3a5068'}`,
+          background: active ? '#0284c7' : 'transparent',
+          border: `1.5px solid ${active ? '#0284c7' : '#94a3b8'}`,
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
         }}>
-          {active && <span style={{ fontSize: 8, color: '#06111a', fontWeight: 900 }}>✓</span>}
+          {active && <span style={{ fontSize: 8, color: '#ffffff', fontWeight: 900 }}>✓</span>}
         </span>
       )}
       {label}
@@ -828,8 +841,8 @@ function ToolBtn({ active, onClick, label, accent, icon }) {
 const iconBtnStyle = {
   all: 'unset', cursor: 'pointer',
   width: 24, height: 24, borderRadius: 4,
-  background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)',
+  background: '#ffffff', border: '1px solid #cbd5e1',
   fontFamily: 'JetBrains Mono, monospace', fontSize: 14,
-  color: '#7a9ab0', display: 'flex', alignItems: 'center', justifyContent: 'center',
+  color: '#475569', display: 'flex', alignItems: 'center', justifyContent: 'center',
   lineHeight: 1, transition: 'background 0.1s',
 };

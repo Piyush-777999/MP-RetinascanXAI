@@ -15,13 +15,19 @@ USAGE:
 """
 
 import os
+import sys
 import json
 import torch
-import torch.nn as nn
-from torchvision import models, transforms
 from PIL import Image
 import numpy as np
 from tqdm import tqdm
+
+# -- Shared modules (single source of truth) ----------------------------------
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+from model import build_model          # noqa: E402
+from preprocess import val_transforms  # noqa: E402
 
 # ── Config ────────────────────────────────────────────────────────────────────
 MESSIDOR_DIR = r"D:\AntiGravity projects\SIH\DataSet\messidor\IMAGES.zip\IMAGES"
@@ -45,25 +51,8 @@ GRADE_NAMES = [
     "Grade 4: Proliferative DR",
 ]
 
-# ── Model ─────────────────────────────────────────────────────────────────────
-def build_model():
-    model = models.resnet50(weights=None)
-    model.fc = nn.Sequential(
-        nn.Dropout(0.4),
-        nn.Linear(model.fc.in_features, 512),
-        nn.ReLU(),
-        nn.Dropout(0.3),
-        nn.Linear(512, 5),
-    )
-    return model
+# build_model and val_transforms imported from shared modules above.
 
-
-# ── Transforms ────────────────────────────────────────────────────────────────
-val_transforms = transforms.Compose([
-    transforms.Resize((IMG_SIZE, IMG_SIZE)),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-])
 
 
 # ── Load all Messidor images ───────────────────────────────────────────────────

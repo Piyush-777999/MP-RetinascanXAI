@@ -26,16 +26,15 @@ REM ── Move to Backend directory (relative to this .bat file) ────�
 cd /d "%~dp0Backend"
 
 REM ── Model presence check ─────────────────────────────────────────────────
-IF EXIST "retinascan_resnet50.pth" (
-    echo [REAL MODE]  Model found!
+IF EXIST "..\ml_script\retinascan_resnet50_v2.pth" (
+    echo [REAL MODE]  RetinaScan-XAI v2 model found in ml_script!
+    echo              Multi-dataset ResNet-50 v2 inference + Grad-CAM + Lesion Segmentation enabled.
+) ELSE IF EXIST "retinascan_resnet50.pth" (
+    echo [REAL MODE]  RetinaScan-XAI model found!
     echo              Live ResNet-50 inference + Grad-CAM + Lesion Segmentation enabled.
 ) ELSE (
     echo [MOCK MODE]  No model file found.
     echo              Returning pre-computed results with realistic lesion data.
-    echo.
-    echo              To enable live inference:
-    echo                1. Download model from model_link.txt
-    echo                2. Place retinascan_resnet50.pth in Backend\
 )
 
 echo.

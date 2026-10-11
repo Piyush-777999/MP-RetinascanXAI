@@ -47,10 +47,19 @@ BASE_DIR     = os.path.dirname(os.path.abspath(__file__))
 FRONTEND_IMG = os.path.normpath(
     os.path.join(BASE_DIR, "..", "Frontend", "retinascan-app", "public", "images")
 )
-MODEL_PATH   = os.path.join(BASE_DIR, "retinascan_resnet50.pth")
-EVAL_REPORT  = os.path.normpath(
+MODEL_V2_PATH = os.path.normpath(
+    os.path.join(BASE_DIR, "..", "ml_script", "retinascan_resnet50_v2.pth")
+)
+MODEL_V1_PATH = os.path.join(BASE_DIR, "retinascan_resnet50.pth")
+MODEL_PATH    = MODEL_V2_PATH if os.path.exists(MODEL_V2_PATH) else MODEL_V1_PATH
+
+EVAL_V2_REPORT = os.path.normpath(
+    os.path.join(BASE_DIR, "..", "ml_script", "evaluation_report_v2.json")
+)
+EVAL_V1_REPORT = os.path.normpath(
     os.path.join(BASE_DIR, "..", "ml_script", "evaluation_report.json")
 )
+EVAL_REPORT    = EVAL_V2_REPORT if os.path.exists(EVAL_V2_REPORT) else EVAL_V1_REPORT
 
 os.makedirs(FRONTEND_IMG, exist_ok=True)
 
@@ -60,13 +69,14 @@ if os.path.exists(MODEL_PATH):
     try:
         from inference import run_inference
         REAL_MODEL_AVAILABLE = True
-        print("✅ Real ResNet-50 model found — live inference + segmentation enabled.")
+        model_name = os.path.basename(MODEL_PATH)
+        print(f"[OK] Real ResNet-50 model found ({model_name}) - live inference + segmentation enabled.")
     except ImportError as exc:
-        print(f"⚠️  Model found but inference deps missing: {exc}")
+        print(f"[WARN] Model found but inference deps missing: {exc}")
         print("   Run: pip install -r requirements.txt")
 else:
-    print("ℹ️  No model file found — running in MOCK mode.")
-    print(f"   Place retinascan_resnet50.pth in: {BASE_DIR}")
+    print("[INFO] No model file found - running in MOCK mode.")
+    print(f"   Place retinascan_resnet50_v2.pth in ml_script/ or retinascan_resnet50.pth in {BASE_DIR}")
 
 # ── Try to import segment_lesions for /lesion-test endpoint ─────────────────
 try:
@@ -208,7 +218,7 @@ def mock_response(filename: str) -> dict:
         "confidence":     MOCK_CONFIDENCE[sev],
         "label":          MOCK_LABELS[sev],
         "action":         MOCK_ACTIONS[sev],
-        "heatmap_url":    f"/images/heatmap_{sev}_od.jpg",
+        "heatmap_url":    f"/images/heatmap_{sev}_od.png",
         "all_probs":      probs,
         "mode":           "mock",
         "message":        "Mock mode — place retinascan_resnet50.pth in Backend/ for live inference.",
@@ -251,7 +261,7 @@ async def upload_image(file: UploadFile = File(...)):
     # ── REAL mode (single-threaded to prevent OOM) ────────────────────────--
     async with inference_lock:
         try:
-            heatmap_name = f"heatmap_live_{uuid.uuid4().hex[:8]}.jpg"
+            heatmap_name = f"heatmap_live_{uuid.uuid4().hex[:8]}.png"
             heatmap_path = os.path.join(FRONTEND_IMG, heatmap_name)
 
             loop   = asyncio.get_event_loop()
@@ -268,15 +278,15 @@ async def upload_image(file: UploadFile = File(...)):
         except ValueError as exc:
             # OOD rejection — structured, frontend-safe
             msg = str(exc).replace("OOD_REJECT: ", "")
-            print(f"⚠️  OOD rejection: {msg}")
+            print(f"[OOD] Rejection: {msg}")
             return JSONResponse(
                 status_code=200,
                 content={"mode": "error", "error": msg},
             )
 
         except Exception as exc:
-            # Any other inference error — log and fall back to mock
-            print(f"❌ Inference error: {exc}")
+            # Any other inference error - log and fall back to mock
+            print(f"[ERROR] Inference error: {exc}")
             fallback          = mock_response(file.filename or "unknown.jpg")
             fallback["mode"]  = "fallback"
             fallback["error"] = "Real inference failed — showing pre-computed result."

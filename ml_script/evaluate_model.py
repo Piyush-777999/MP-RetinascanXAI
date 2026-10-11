@@ -12,19 +12,24 @@ Requirements:
 """
 
 import os
+import sys
 import json
 import torch
-import torch.nn as nn
 from torch.utils.data import Dataset, DataLoader
-from torchvision import models, transforms
 from PIL import Image
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     confusion_matrix, classification_report, roc_auc_score,
     accuracy_score, roc_curve
 )
+
+# -- Shared modules (single source of truth) ----------------------------------
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+from model import build_model          # noqa: E402
+from preprocess import val_transforms  # noqa: E402
 
 # ─── Config ───────────────────────────────────────────────────────────────────
 DATASET_ROOT = r"D:\AntiGravity projects\SIH\DataSet\aptos2019-blindness-detection"
@@ -42,19 +47,9 @@ LEVEL_NAMES  = ["Level 0: No DR", "Level 1: Mild NPDR",
                 "Level 2: Moderate NPDR", "Level 3: Severe NPDR",
                 "Level 4: Proliferative DR"]
 
-# ─── Model ────────────────────────────────────────────────────────────────────
-def build_model():
-    model = models.resnet50(weights=None)
-    model.fc = nn.Sequential(
-        nn.Dropout(0.4),
-        nn.Linear(model.fc.in_features, 512),
-        nn.ReLU(),
-        nn.Dropout(0.3),
-        nn.Linear(512, 5)
-    )
-    return model
+# Model and val_transforms imported from shared model.py + preprocess.py above.
 
-# ─── Dataset ──────────────────────────────────────────────────────────────────
+# --- Dataset -----------------------------------------------------------------
 class APTOSDataset(Dataset):
     def __init__(self, df, img_dir, transform):
         self.df = df.reset_index(drop=True)
@@ -72,11 +67,6 @@ class APTOSDataset(Dataset):
         img = Image.open(path).convert("RGB")
         return self.transform(img), int(row["diagnosis"])
 
-val_transforms = transforms.Compose([
-    transforms.Resize((IMG_SIZE, IMG_SIZE)),
-    transforms.ToTensor(),
-    transforms.Normalize([0.485, 0.456, 0.406], [0.229, 0.224, 0.225]),
-])
 
 # ─── Main ─────────────────────────────────────────────────────────────────────
 def main():
@@ -97,9 +87,13 @@ def main():
     model.eval()
     print(f"   Trained epoch: {checkpoint.get('epoch', 'N/A')}")
 
-    # Load val split (same seed as training = same val set)
-    df = pd.read_csv(TRAIN_CSV)
-    _, val_df = train_test_split(df, test_size=0.20, random_state=RANDOM_SEED, stratify=df["diagnosis"])
+    # Load frozen val split (generated once by split_dataset.py)
+    val_csv = os.path.join(_HERE, "val_ids.csv")
+    if not os.path.exists(val_csv):
+        raise FileNotFoundError(
+            "val_ids.csv not found. Run split_dataset.py first."
+        )
+    val_df = pd.read_csv(val_csv)
     print(f"   Validation samples: {len(val_df)}")
 
     val_ds     = APTOSDataset(val_df, TRAIN_DIR, val_transforms)

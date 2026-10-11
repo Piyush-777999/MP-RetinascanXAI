@@ -22,16 +22,22 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.utils.data import Dataset, DataLoader
-from torchvision import models, transforms
 from PIL import Image
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     confusion_matrix, classification_report,
     roc_auc_score, accuracy_score
 )
 from tqdm import tqdm
+
+# ── Shared modules (single source of truth) ──────────────────────────────────
+# model.py and preprocess.py must be in the same directory as this script.
+_HERE = os.path.dirname(os.path.abspath(__file__))
+if _HERE not in sys.path:
+    sys.path.insert(0, _HERE)
+from model import build_model          # noqa: E402
+from preprocess import train_transforms, val_transforms  # noqa: E402
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION
@@ -84,41 +90,10 @@ class APTOSDataset(Dataset):
         return img, label
 
 # ─────────────────────────────────────────────────────────────────────────────
-# DATA AUGMENTATION
+# DATA AUGMENTATION + MODEL
 # ─────────────────────────────────────────────────────────────────────────────
-train_transforms = transforms.Compose([
-    transforms.Resize((IMG_SIZE + 32, IMG_SIZE + 32)),
-    transforms.RandomCrop(IMG_SIZE),
-    transforms.RandomHorizontalFlip(),
-    transforms.RandomVerticalFlip(),
-    transforms.RandomRotation(20),
-    transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.1),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                         std=[0.229, 0.224, 0.225]),
-])
-
-val_transforms = transforms.Compose([
-    transforms.Resize((IMG_SIZE, IMG_SIZE)),
-    transforms.ToTensor(),
-    transforms.Normalize(mean=[0.485, 0.456, 0.406],
-                         std=[0.229, 0.224, 0.225]),
-])
-
-# ─────────────────────────────────────────────────────────────────────────────
-# MODEL
-# ─────────────────────────────────────────────────────────────────────────────
-def build_model(num_classes=5):
-    model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
-    # Replace final layer: 2048 → num_classes
-    model.fc = nn.Sequential(
-        nn.Dropout(0.4),
-        nn.Linear(model.fc.in_features, 512),
-        nn.ReLU(),
-        nn.Dropout(0.3),
-        nn.Linear(512, num_classes)
-    )
-    return model
+# Imported from preprocess.py and model.py (single sources of truth).
+# Do NOT redefine transforms or build_model() here.
 
 # ─────────────────────────────────────────────────────────────────────────────
 # CLASS WEIGHTS (handles imbalanced dataset)
@@ -234,11 +209,19 @@ def main():
     print(f"   Total samples: {len(df)}")
     print(f"   Class distribution:\n{df['diagnosis'].value_counts().sort_index().to_string()}")
 
-    # Train / val split (stratified)
-    train_df, val_df = train_test_split(
-        df, test_size=VAL_SPLIT, random_state=RANDOM_SEED, stratify=df["diagnosis"]
-    )
-    print(f"\n   Train: {len(train_df)} | Val: {len(val_df)}")
+    # Load frozen split IDs (generated once by split_dataset.py)
+    train_csv_path = os.path.join(OUTPUT_DIR, "train_ids.csv")
+    val_csv_path   = os.path.join(OUTPUT_DIR, "val_ids.csv")
+
+    if os.path.exists(train_csv_path) and os.path.exists(val_csv_path):
+        train_df = pd.read_csv(train_csv_path)
+        val_df   = pd.read_csv(val_csv_path)
+        print(f"\n   Loaded frozen split: Train={len(train_df)} | Val={len(val_df)}")
+    else:
+        raise FileNotFoundError(
+            "train_ids.csv / val_ids.csv not found. "
+            "Run split_dataset.py ONCE to generate them, then commit the CSVs."
+        )
 
     # Datasets & loaders
     train_ds = APTOSDataset(train_df, TRAIN_DIR, train_transforms)

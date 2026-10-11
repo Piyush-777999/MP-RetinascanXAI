@@ -9,5 +9,5 @@ echo The app will open in your browser automatically.
 echo Press Ctrl+C to stop.
 echo.
 
-npm run dev -- --open
+call npm run dev -- --open
 pause

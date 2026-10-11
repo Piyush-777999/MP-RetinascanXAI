@@ -5,40 +5,45 @@ import {
   getLesionRegion,
 } from '../data.js';
 
-/* ── Design tokens ─────────────────────────────────────────────────────────── */
+/* ── Clinical Design tokens (Hospital Light Theme) ───────────────────────── */
 const D = {
-  bg:    '#0a0f14',
-  panel: '#111820',
-  border:'#1e2d3d',
-  teal:  '#00d4aa',
-  text:  '#e8f4f8',
-  sub:   '#7a9ab0',
-  muted: '#3a5068',
-  mono:  'JetBrains Mono, "Courier New", monospace',
+  bg:       '#f8fafc',
+  panel:    '#ffffff',
+  card:     '#ffffff',
+  border:   '#e2e8f0',
+  borderLight: '#f1f5f9',
+  primary:  '#0284c7',
+  primaryHover: '#0369a1',
+  primaryLight: '#f0f9ff',
+  success:  '#16a34a',
+  text:     '#0f172a',
+  sub:      '#475569',
+  muted:    '#64748b',
+  mono:     'JetBrains Mono, "Courier New", monospace',
 };
 
 const GRADE_LABELS = [
-  { key: 0, name: 'Grade 0: No DR',           color: '#22c55e', shortName: 'No DR' },
-  { key: 1, name: 'Grade 1: Mild NPDR',        color: '#84cc16', shortName: 'Mild NPDR' },
-  { key: 2, name: 'Grade 2: Moderate NPDR',    color: '#f59e0b', shortName: 'Moderate NPDR' },
-  { key: 3, name: 'Grade 3: Severe NPDR',      color: '#ea580c', shortName: 'Severe NPDR' },
-  { key: 4, name: 'Grade 4: Proliferative DR', color: '#dc2626', shortName: 'Proliferative DR' },
+  { key: 0, name: 'Grade 0: No DR',           color: '#15803d', bg: '#dcfce7', border: '#bbf7d0', shortName: 'Healthy (No DR)' },
+  { key: 1, name: 'Grade 1: Mild NPDR',        color: '#b45309', bg: '#fef3c7', border: '#fde68a', shortName: 'Mild NPDR' },
+  { key: 2, name: 'Grade 2: Moderate NPDR',    color: '#c2410c', bg: '#ffedd5', border: '#fed7aa', shortName: 'Moderate NPDR' },
+  { key: 3, name: 'Grade 3: Severe NPDR',      color: '#b91c1c', bg: '#fee2e2', border: '#fecaca', shortName: 'Severe NPDR' },
+  { key: 4, name: 'Grade 4: Proliferative DR', color: '#991b1b', bg: '#fef2f2', border: '#fca5a5', shortName: 'Proliferative DR' },
 ];
 
 const SEVERITY_ACTIONS = [
-  'Routine annual re-screening',
-  'Monitor every 6–12 months',
-  'Specialist triage required — refer within 1 month',
-  'Urgent referral — within 1 week',
-  'Emergency — refer within 24 hours',
+  'Routine annual re-screening recommended',
+  'Monitor in 6–12 months with repeat fundus photography',
+  'Specialist triage required — refer to ophthalmologist within 1 month',
+  'Urgent specialist referral — evaluate within 1 week',
+  'Emergency triage — evaluate within 24 hours for laser/anti-VEGF',
 ];
 
 const LEGEND_TYPES = [
-  { type: 'neovascular',   label: 'Neovascularization', color: '#ec4899' },
-  { type: 'hemorrhage',    label: 'Hemorrhage',          color: '#ef4444' },
-  { type: 'hardExudate',   label: 'Hard Exudate',        color: '#00d4aa' },
-  { type: 'microaneurysm', label: 'Microaneurysm',       color: '#eab308' },
-  { type: 'cottonWool',    label: 'Cotton Wool Spot',    color: '#a855f7' },
+  { type: 'microaneurysm', label: 'Microaneurysms (MA)',   color: '#dc2626', bg: '#fee2e2', border: '#fecaca', symbol: 'MA' },
+  { type: 'hemorrhage',    label: 'Hemorrhages (HE)',       color: '#ea580c', bg: '#ffedd5', border: '#fed7aa', symbol: 'HE' },
+  { type: 'hardExudate',   label: 'Hard Exudates (EX)',     color: '#0284c7', bg: '#e0f2fe', border: '#bae6fd', symbol: 'EX' },
+  { type: 'cottonWool',    label: 'Cotton Wool Spots',      color: '#7c3aed', bg: '#ede9fe', border: '#ddd6fe', symbol: 'CWS' },
+  { type: 'neovascular',   label: 'Neovascularization',     color: '#db2777', bg: '#fce7f3', border: '#fbcfe8', symbol: 'NV' },
 ];
 
 const KEYFRAMES = `
@@ -55,7 +60,7 @@ const KEYFRAMES = `
     from { width: 0; }
   }
   @keyframes fade-up {
-    from { opacity: 0; transform: translateY(10px); }
+    from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: translateY(0); }
   }
 `;
@@ -132,6 +137,7 @@ export default function Results({
   const [bilateral,    setBilateral]    = useState(false);
   const [imgError,     setImgError]     = useState(false);
   const [heatmapError, setHeatmapError] = useState(false);
+  const [filterType,   setFilterType]   = useState('all');
 
   const sev       = severity ?? patient?.severity ?? 2;
   const eye       = selectedEye || 'od';
@@ -144,6 +150,20 @@ export default function Results({
     return rawLesions.map((l, idx) => parseLesion(l, idx));
   }, [rawLesions]);
 
+  const typeCounts = useMemo(() => {
+    const counts = { all: lesions.length, microaneurysm: 0, hemorrhage: 0, hardExudate: 0, other: 0 };
+    lesions.forEach(l => {
+      if (counts[l.type] !== undefined) counts[l.type]++;
+      else counts.other++;
+    });
+    return counts;
+  }, [lesions]);
+
+  const filteredLesions = useMemo(() => {
+    if (filterType === 'all') return lesions;
+    return lesions.filter(l => l.type === filterType);
+  }, [lesions, filterType]);
+
   const probs = useMemo(() => {
     const raw = allProbs || patient?.all_probs;
     if (Array.isArray(raw) && raw.length === 5) {
@@ -154,7 +174,6 @@ export default function Results({
     return base;
   }, [allProbs, patient?.all_probs, sev, patient?.confidence]);
 
-  // Prefer real uploaded image; fall back cleanly to demo asset
   const fundusPath  = uploadedImageUrl || patient?.imageUrl || `/images/img_${sev}_${eye}.jpg`;
   const heatmapPath = heatmapUrl
     ? (heatmapUrl.startsWith('http') ? heatmapUrl : `http://localhost:8000${heatmapUrl}`)
@@ -173,9 +192,8 @@ export default function Results({
 
   const handleQueueClick = () => { if (onQueue) onQueue(); else if (navigate) navigate('queue'); };
 
-  // Inject keyframes
   useEffect(() => {
-    const id = 'results-keyframes';
+    const id = 'results-keyframes-light';
     if (!document.getElementById(id)) {
       const s = document.createElement('style');
       s.id = id; s.textContent = KEYFRAMES;
@@ -185,41 +203,44 @@ export default function Results({
 
   return (
     <div style={{
-      minHeight: '100vh',
+      height: 'calc(100vh - 56px)',
+      maxHeight: 'calc(100vh - 56px)',
+      minHeight: 'calc(100vh - 56px)',
       background: D.bg,
       color: D.text,
       fontFamily: 'Inter, system-ui, sans-serif',
       display: 'flex', flexDirection: 'column',
-      animation: 'fade-up 0.3s ease both',
+      overflow: 'hidden',
+      animation: 'fade-up 0.25s ease both',
     }}>
 
-      {/* ── Title bar (like workstation header) ── */}
+      {/* ── Top Bar ── */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 14,
-        padding: '8px 20px',
-        background: D.panel, borderBottom: `1px solid ${D.border}`,
+        padding: '10px 24px',
+        background: '#ffffff', borderBottom: `1px solid ${D.border}`,
         flexShrink: 0, flexWrap: 'wrap',
       }}>
-        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e', flexShrink: 0 }} />
-        <span style={{ fontFamily: D.mono, fontSize: 11, fontWeight: 700, letterSpacing: '0.08em', color: D.text }}>
-          DIAGNOSTIC RESULTS · ICDR ANALYSIS
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#16a34a', boxShadow: '0 0 0 3px #dcfce7', flexShrink: 0 }} />
+        <span style={{ fontSize: 13, fontWeight: 700, color: D.text }}>
+          Diagnostic Results · ICDR Classification & Lesion Mapping
         </span>
-        <span style={{ padding: '3px 10px', borderRadius: 5, background: 'rgba(255,255,255,0.05)', border: `1px solid ${D.border}`, fontFamily: D.mono, fontSize: 10, color: D.sub }}>
-          {studyId} · Eye: <strong style={{ color: D.teal }}>{eye.toUpperCase()}</strong>
+        <span style={{ padding: '3px 10px', borderRadius: 6, background: '#f1f5f9', border: `1px solid ${D.border}`, fontFamily: D.mono, fontSize: 11, color: D.sub }}>
+          Study ID: <strong>{studyId}</strong> · Eye: <strong style={{ color: D.primary }}>{eye.toUpperCase()}</strong>
         </span>
 
         <div style={{ flex: 1 }} />
 
         {/* Eye toggle */}
-        <div style={{ display: 'flex', background: 'rgba(255,255,255,0.04)', border: `1px solid ${D.border}`, borderRadius: 6, padding: 2, gap: 2 }}>
+        <div style={{ display: 'flex', background: '#f1f5f9', border: `1px solid ${D.border}`, borderRadius: 8, padding: 2, gap: 2 }}>
           {['od', 'os'].map(e => (
             <button key={e} onClick={() => setSelectedEye(e)} style={{
               all: 'unset', cursor: 'pointer',
-              padding: '4px 12px', borderRadius: 4,
+              padding: '4px 12px', borderRadius: 6,
               fontFamily: D.mono, fontSize: 11, fontWeight: 700,
-              background: eye === e ? 'rgba(0,212,170,0.15)' : 'transparent',
-              color: eye === e ? D.teal : D.muted,
-              border: eye === e ? '1px solid rgba(0,212,170,0.3)' : '1px solid transparent',
+              background: eye === e ? '#ffffff' : 'transparent',
+              color: eye === e ? D.primary : D.muted,
+              boxShadow: eye === e ? '0 1px 3px rgba(15,23,42,0.06)' : 'none',
             }}>
               {e.toUpperCase()}
             </button>
@@ -228,80 +249,83 @@ export default function Results({
 
         <button onClick={() => setBilateral(v => !v)} style={{
           all: 'unset', cursor: 'pointer',
-          padding: '4px 12px', borderRadius: 5,
-          background: bilateral ? 'rgba(168,85,247,0.15)' : 'rgba(255,255,255,0.04)',
-          border: `1px solid ${bilateral ? 'rgba(168,85,247,0.4)' : D.border}`,
-          fontFamily: D.mono, fontSize: 10,
-          color: bilateral ? '#a855f7' : D.muted,
+          padding: '5px 12px', borderRadius: 7,
+          background: bilateral ? '#f5f3ff' : '#ffffff',
+          border: `1px solid ${bilateral ? '#c4b5fd' : D.border}`,
+          fontSize: 11, fontWeight: 600,
+          color: bilateral ? '#7c3aed' : D.sub,
         }}>⊞ Bilateral</button>
 
         <button onClick={() => navigate?.('upload')} style={{
           all: 'unset', cursor: 'pointer',
-          padding: '5px 12px', borderRadius: 6,
-          background: 'rgba(255,255,255,0.04)', border: `1px solid ${D.border}`,
-          fontFamily: D.mono, fontSize: 10, color: D.sub,
+          padding: '5px 14px', borderRadius: 7,
+          background: '#ffffff', border: `1px solid ${D.border}`,
+          fontSize: 12, fontWeight: 600, color: D.sub,
         }}>← New Scan</button>
       </div>
 
       {/* ── Patient header strip ── */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 32,
-        padding: '12px 20px',
-        background: 'rgba(0,212,170,0.04)',
-        borderBottom: `1px solid rgba(0,212,170,0.15)`,
+        display: 'flex', alignItems: 'center', gap: 20,
+        padding: '12px 24px',
+        background: '#ffffff',
+        borderBottom: `1px solid ${D.border}`,
+        boxShadow: '0 1px 2px rgba(15,23,42,0.03)',
         flexShrink: 0, flexWrap: 'wrap',
       }}>
         {/* Grade badge */}
         <div style={{
           display: 'flex', alignItems: 'center', gap: 10,
-          padding: '6px 16px', borderRadius: 8,
-          background: `${gradeInfo.color}18`, border: `1px solid ${gradeInfo.color}50`,
+          padding: '6px 14px', borderRadius: 8,
+          background: gradeInfo.bg, border: `1px solid ${gradeInfo.border}`,
         }}>
-          <span style={{ width: 10, height: 10, borderRadius: '50%', background: gradeInfo.color, boxShadow: `0 0 8px ${gradeInfo.color}` }} />
+          <span style={{ width: 9, height: 9, borderRadius: '50%', background: gradeInfo.color }} />
           <div>
-            <div style={{ fontFamily: D.mono, fontSize: 13, fontWeight: 800, color: gradeInfo.color }}>{gradeInfo.shortName}</div>
-            <div style={{ fontFamily: D.mono, fontSize: 9, color: D.muted }}>ICDR LEVEL {sev}</div>
+            <div style={{ fontSize: 13, fontWeight: 800, color: gradeInfo.color }}>{gradeInfo.shortName}</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: gradeInfo.color, opacity: 0.85 }}>ICDR LEVEL {sev}</div>
           </div>
         </div>
 
         {/* Patient name */}
         <div>
-          <div style={{ fontSize: 16, fontWeight: 700, color: D.text }}>{patName}</div>
-          <div style={{ fontFamily: D.mono, fontSize: 10, color: D.muted, marginTop: 2 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, color: D.text }}>{patName}</div>
+          <div style={{ fontSize: 11, color: D.muted, marginTop: 1 }}>
             {patient?.age ? `${patient.age}Y` : '58Y'} / {patient?.gender === 'M' ? 'Male' : 'Female'} · {patient?.village || 'PHC Mandawar'}
           </div>
         </div>
 
+        <div style={{ width: 1, height: 32, background: D.border }} />
+
         {/* Confidence */}
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontFamily: D.mono, fontSize: 22, fontWeight: 800, color: D.teal }}>{conf}%</div>
-          <div style={{ fontFamily: D.mono, fontSize: 9, color: D.muted }}>MODEL CONFIDENCE</div>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: D.primary }}>{conf}%</div>
+          <div style={{ fontSize: 10, fontWeight: 600, color: D.muted }}>AI CONFIDENCE</div>
         </div>
 
         {/* Lesion count */}
-        <div style={{ textAlign: 'center' }}>
-          <div style={{ fontFamily: D.mono, fontSize: 22, fontWeight: 800, color: '#f59e0b' }}>{lesions.length}</div>
-          <div style={{ fontFamily: D.mono, fontSize: 9, color: D.muted }}>LESIONS DETECTED</div>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 800, color: '#d97706' }}>{lesions.length}</div>
+          <div style={{ fontSize: 10, fontWeight: 600, color: D.muted }}>LESIONS DETECTED</div>
         </div>
 
-        {/* HbA1c if available */}
+        {/* HbA1c */}
         {patient?.hba1c && (
-          <div style={{ textAlign: 'center' }}>
-            <div style={{ fontFamily: D.mono, fontSize: 22, fontWeight: 800, color: patient.hba1c > 9 ? '#ea580c' : '#84cc16' }}>{patient.hba1c}%</div>
-            <div style={{ fontFamily: D.mono, fontSize: 9, color: D.muted }}>HbA1c</div>
+          <div>
+            <div style={{ fontSize: 18, fontWeight: 800, color: patient.hba1c > 9 ? '#b91c1c' : '#15803d' }}>{patient.hba1c}%</div>
+            <div style={{ fontSize: 10, fontWeight: 600, color: D.muted }}>HbA1c</div>
           </div>
         )}
 
         <div style={{ flex: 1 }} />
 
-        {/* Action recommendation */}
+        {/* Recommendation banner */}
         <div style={{
-          padding: '8px 16px', borderRadius: 8,
-          background: sev >= 3 ? 'rgba(220,38,38,0.12)' : sev >= 2 ? 'rgba(234,88,12,0.1)' : 'rgba(34,197,94,0.08)',
-          border: `1px solid ${sev >= 3 ? 'rgba(220,38,38,0.3)' : sev >= 2 ? 'rgba(234,88,12,0.25)' : 'rgba(34,197,94,0.2)'}`,
-          fontFamily: D.mono, fontSize: 11, fontWeight: 700,
-          color: sev >= 3 ? '#dc2626' : sev >= 2 ? '#ea580c' : '#22c55e',
-          maxWidth: 280,
+          padding: '8px 14px', borderRadius: 8,
+          background: gradeInfo.bg,
+          border: `1px solid ${gradeInfo.border}`,
+          fontSize: 12, fontWeight: 700,
+          color: gradeInfo.color,
+          maxWidth: 320,
         }}>
           ⚡ {patient?.action || SEVERITY_ACTIONS[sev] || 'Clinical Review Required'}
         </div>
@@ -309,91 +333,97 @@ export default function Results({
         {/* Queue CTA */}
         <button onClick={handleQueueClick} style={{
           all: 'unset', cursor: 'pointer',
-          padding: '10px 22px', borderRadius: 8,
-          background: 'rgba(0,212,170,0.18)', border: '1px solid rgba(0,212,170,0.4)',
-          fontFamily: D.mono, fontSize: 12, fontWeight: 700, color: D.teal,
-          display: 'flex', alignItems: 'center', gap: 8,
+          padding: '8px 18px', borderRadius: 8,
+          background: D.primary, color: '#ffffff',
+          fontSize: 12, fontWeight: 700,
+          boxShadow: '0 2px 6px rgba(2,132,199,0.25)',
+          display: 'flex', alignItems: 'center', gap: 6,
         }}>
-          Send to Review Queue →
+          Review Queue →
         </button>
       </div>
 
-      {/* ── Main two-panel body ── */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      {/* ── Main two-panel body (Strictly constrained viewport) ── */}
+      <div style={{ display: 'flex', flex: 1, minHeight: 0, overflow: 'hidden' }}>
 
-        {/* ════ LEFT PANEL — Fundus viewport ════ */}
+        {/* ════ LEFT PANEL — Fundus viewport (ALWAYS STAYS FIXED ON LEFT) ════ */}
         <div style={{
-          flex: '0 0 60%', display: 'flex', flexDirection: 'column',
+          flex: '0 0 56%',
+          maxWidth: '56%',
+          height: '100%',
+          maxHeight: '100%',
+          minHeight: 0,
+          display: 'flex', flexDirection: 'column',
           borderRight: `1px solid ${D.border}`,
-          background: '#07111a',
+          background: '#ffffff',
+          position: 'sticky',
+          top: 0,
+          alignSelf: 'flex-start',
+          overflow: 'hidden',
+          zIndex: 5,
         }}>
           {/* Toolbar */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8,
-            padding: '8px 16px',
-            background: D.panel, borderBottom: `1px solid ${D.border}`,
+            padding: '8px 18px',
+            background: '#ffffff', borderBottom: `1px solid ${D.border}`,
             flexShrink: 0, flexWrap: 'wrap',
           }}>
-            <ToolBtn active={showRedFree}  onClick={() => setShowRedFree(v => !v)}  label="Red-Free (540nm)" />
-            <div style={{ width: 1, height: 20, background: D.border }} />
-            <ToolBtn active={showHeatmap}  onClick={() => setShowHeatmap(v => !v)}  label="Grad-CAM++" accent />
-            <div style={{ width: 1, height: 20, background: D.border }} />
-            <ToolBtn active={showPins}     onClick={() => setShowPins(v => !v)}     label={`Pins (${lesions.length})`} icon="⊕" />
+            <ToolBtn active={showHeatmap} onClick={() => setShowHeatmap(v => !v)} label="Grad-CAM++ Heatmap" accent />
+            <div style={{ width: 1, height: 18, background: D.border }} />
+            <ToolBtn active={showPins}    onClick={() => setShowPins(v => !v)}    label={`Lesion Pins (${lesions.length})`} icon="⊕" />
+            <div style={{ width: 1, height: 18, background: D.border }} />
+            <ToolBtn active={showRedFree} onClick={() => setShowRedFree(v => !v)} label="Red-Free (540nm)" />
             <div style={{ flex: 1 }} />
-            <span style={{ fontFamily: D.mono, fontSize: 9, color: D.muted }}>ZOOM: 100% · FOV 45°</span>
+            <span style={{ fontSize: 11, color: D.muted, fontWeight: 500 }}>FOV 45° Posterior Pole</span>
           </div>
 
-          {/* Image area */}
+          {/* Image area — High-contrast medical viewer frame */}
           <div style={{
-            flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: '#050d14', position: 'relative', overflow: 'hidden',
+            flex: 1, minHeight: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: '#0a1017', position: 'relative', overflow: 'hidden', padding: 12,
           }}>
             {/* Patient overlay — top left */}
             <div style={{
               position: 'absolute', top: 14, left: 14, zIndex: 10,
-              background: 'rgba(5,13,20,0.87)', backdropFilter: 'blur(6px)',
-              border: `1px solid ${D.border}`, borderRadius: 6, padding: '8px 12px',
-              fontFamily: D.mono, fontSize: 10, lineHeight: 1.85, color: D.sub,
+              background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(6px)',
+              border: `1px solid rgba(255,255,255,0.12)`, borderRadius: 7, padding: '7px 11px',
+              fontFamily: D.mono, fontSize: 10, lineHeight: 1.7, color: '#e2e8f0',
             }}>
-              <div><span style={{ color: D.muted }}>PATIENT: </span><strong style={{ color: D.text }}>{studyId}</strong></div>
-              <div><span style={{ color: D.muted }}>STUDY: </span>CFP 45° RETINAL SCAN</div>
-              <div><span style={{ color: D.muted }}>EYE: </span><strong style={{ color: D.teal }}>{eye.toUpperCase()} ({eye === 'od' ? 'RIGHT' : 'LEFT'})</strong></div>
-              <div><span style={{ color: D.muted }}>FOV: </span>45 DEGREE POSTERIOR POLE</div>
+              <div><span style={{ color: '#94a3b8' }}>PATIENT: </span><strong style={{ color: '#ffffff' }}>{studyId}</strong></div>
+              <div><span style={{ color: '#94a3b8' }}>EYE: </span><strong style={{ color: '#38bdf8' }}>{eye.toUpperCase()} ({eye === 'od' ? 'RIGHT' : 'LEFT'})</strong></div>
+              <div><span style={{ color: '#94a3b8' }}>FOV: </span>45° POSTERIOR POLE</div>
             </div>
 
             {/* Tech overlay — top right */}
             <div style={{
               position: 'absolute', top: 14, right: 14, zIndex: 10,
-              background: 'rgba(5,13,20,0.87)', backdropFilter: 'blur(6px)',
-              border: `1px solid ${D.border}`, borderRadius: 6, padding: '8px 12px',
-              fontFamily: D.mono, fontSize: 10, lineHeight: 1.85, color: D.sub, textAlign: 'right',
+              background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(6px)',
+              border: `1px solid rgba(255,255,255,0.12)`, borderRadius: 7, padding: '7px 11px',
+              fontFamily: D.mono, fontSize: 10, lineHeight: 1.7, color: '#e2e8f0', textAlign: 'right',
             }}>
-              <div><span style={{ color: D.muted }}>ZOOM: </span><strong style={{ color: D.text }}>100%</strong></div>
-              <div><span style={{ color: D.muted }}>RED-FREE: </span><strong style={{ color: showRedFree ? D.teal : D.muted }}>{showRedFree ? 'ON' : 'OFF'}</strong></div>
-              <div><span style={{ color: D.muted }}>SALIENCY: </span><strong style={{ color: showHeatmap ? D.teal : D.muted }}>{showHeatmap ? 'Grad-CAM++' : 'OFF'}</strong></div>
-              <div><span style={{ color: D.muted }}>RESOLUTION: </span>512 × 512 px</div>
+              <div><span style={{ color: '#94a3b8' }}>HEATMAP: </span><strong style={{ color: showHeatmap ? '#38bdf8' : '#94a3b8' }}>{showHeatmap ? 'ON' : 'OFF'}</strong></div>
+              <div><span style={{ color: '#94a3b8' }}>PINS: </span><strong style={{ color: '#ffffff' }}>{showPins ? filteredLesions.length : 0}</strong></div>
+              <div><span style={{ color: '#94a3b8' }}>RES: </span>512 × 512 px</div>
             </div>
 
             {/* ── Circular fundus with lesion pins ── */}
             <div style={{
               position: 'relative',
-              width: 500, height: 500,
+              width: 'min(470px, calc(100% - 24px), calc(100vh - 240px))',
+              height: 'min(470px, calc(100% - 24px), calc(100vh - 240px))',
+              aspectRatio: '1 / 1',
               borderRadius: '50%',
               overflow: 'hidden',
-              boxShadow: '0 0 0 1px rgba(255,255,255,0.06), 0 0 80px rgba(0,0,0,0.9)',
+              boxShadow: '0 0 0 1px rgba(255,255,255,0.1), 0 0 50px rgba(0,0,0,0.8)',
               flexShrink: 0,
             }}>
               {imgError ? (
                 <div style={{
                   width: '100%', height: '100%',
                   display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  background: '#111820', color: D.muted, fontFamily: D.mono, fontSize: 12, gap: 10,
+                  background: '#0f172a', color: '#94a3b8', fontSize: 12, gap: 10,
                 }}>
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#3a5068" strokeWidth="1.5">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <polyline points="21 15 16 10 5 21"/>
-                  </svg>
                   <span>Image unavailable</span>
                 </div>
               ) : (
@@ -414,85 +444,79 @@ export default function Results({
                   style={{
                     position: 'absolute', inset: 0,
                     width: '100%', height: '100%', objectFit: 'cover',
-                    mixBlendMode: 'screen', opacity: 0.72, pointerEvents: 'none',
+                    pointerEvents: 'none',
                   }}
                 />
               )}
 
-              {/* Empty state badge on fundus */}
+              {/* Empty state badge */}
               {showPins && lesions.length === 0 && (
                 <div style={{
                   position: 'absolute', bottom: 20, left: '50%', transform: 'translateX(-50%)',
-                  background: 'rgba(5,13,20,0.88)', backdropFilter: 'blur(6px)',
-                  border: '1px solid rgba(34,197,94,0.3)', borderRadius: 20,
-                  padding: '6px 16px', fontFamily: D.mono, fontSize: 11,
-                  color: '#22c55e', pointerEvents: 'none', zIndex: 15,
+                  background: 'rgba(15,23,42,0.9)', backdropFilter: 'blur(6px)',
+                  border: '1px solid #16a34a', borderRadius: 20,
+                  padding: '6px 16px', fontSize: 11, fontWeight: 700,
+                  color: '#4ade80', pointerEvents: 'none', zIndex: 15,
                 }}>
-                  ✓ No lesions detected — healthy retina
+                  ✓ No pathological lesions detected
                 </div>
               )}
 
               {/* Pins */}
-              {showPins && lesions.map((lesion, idx) => {
+              {showPins && filteredLesions.map((lesion, idx) => {
                 const lt    = lesion.lt;
                 const isHov = hoveredId === lesion.id;
+                const shouldPulse = isHov || idx < 20;
                 return (
                   <div key={lesion.id}
                     style={{ position: 'absolute', left: `${lesion.x}%`, top: `${lesion.y}%`, zIndex: isHov ? 30 : 10 }}
                     onMouseEnter={() => setHoveredId(lesion.id)}
                     onMouseLeave={() => setHoveredId(null)}
                   >
-                    {/* Pulse ring */}
+                    {shouldPulse && (
+                      <div style={{
+                        position: 'absolute', width: 20, height: 20, borderRadius: '50%',
+                        border: `1.5px solid ${lt.color}`,
+                        animation: isHov ? `pin-pulse 1s infinite` : `pin-pulse 2s ${idx * 0.1}s infinite`,
+                        transform: 'translate(-50%,-50%)', pointerEvents: 'none',
+                      }} />
+                    )}
                     <div style={{
-                      position: 'absolute', width: 22, height: 22, borderRadius: '50%',
-                      border: `1.5px solid ${lt.color}`,
-                      animation: `pin-pulse 2s ${idx * 0.15}s infinite`,
-                      transform: 'translate(-50%,-50%)', pointerEvents: 'none',
-                    }} />
-                    {/* Dot */}
-                    <div style={{
-                      width: isHov ? 18 : 11, height: isHov ? 18 : 11,
+                      width: isHov ? 16 : 9, height: isHov ? 16 : 9,
                       borderRadius: '50%',
                       background: lt.color,
-                      border: `2px solid rgba(255,255,255,0.9)`,
-                      boxShadow: `0 0 ${isHov ? 14 : 5}px ${lt.color}`,
+                      border: `1.5px solid #ffffff`,
+                      boxShadow: `0 0 ${isHov ? 10 : 3}px ${lt.color}`,
                       transform: 'translate(-50%,-50%)',
-                      transition: 'all 0.15s',
-                      animation: `pin-in 0.3s ${idx * 0.04}s both`,
+                      transition: 'all 0.12s',
                       cursor: 'crosshair',
                       display: 'flex', alignItems: 'center', justifyContent: 'center',
                     }}>
-                      {isHov && <span style={{ fontSize: 6, fontWeight: 900, color: '#fff', fontFamily: D.mono }}>{lesion.id}</span>}
+                      {isHov && <span style={{ fontSize: 7, fontWeight: 900, color: '#fff', fontFamily: D.mono }}>{lesion.id}</span>}
                     </div>
+
                     {/* Tooltip */}
                     {isHov && (
                       <div style={{
                         position: 'absolute', bottom: '100%', left: '50%',
                         transform: 'translateX(-50%) translateY(-8px)',
-                        background: 'rgba(5,13,20,0.96)',
-                        border: `1px solid ${lt.color}60`,
-                        borderRadius: 7, padding: '7px 12px',
+                        background: '#ffffff',
+                        border: `1.5px solid ${lt.color}`,
+                        borderRadius: 8, padding: '8px 12px',
                         whiteSpace: 'nowrap', zIndex: 50, pointerEvents: 'none',
-                        boxShadow: `0 4px 20px rgba(0,0,0,0.7)`,
+                        boxShadow: '0 4px 14px rgba(15,23,42,0.15)',
+                        color: D.text,
                       }}>
-                        <div style={{ fontFamily: D.mono, fontSize: 11, fontWeight: 700, color: lt.color, marginBottom: 3 }}>
-                          #{lesion.id < 10 ? '0' + lesion.id : lesion.id} {lt.label.toUpperCase()}
+                        <div style={{ fontSize: 11, fontWeight: 800, color: lt.color, marginBottom: 2 }}>
+                          #{lesion.id} {lt.label}
                         </div>
-                        <div style={{ fontFamily: D.mono, fontSize: 10, color: D.sub }}>
+                        <div style={{ fontSize: 10, color: D.sub }}>
                           {lesion.confidence != null && <>Conf: <strong style={{ color: D.text }}>{lesion.confidence}%</strong>&nbsp;&nbsp;</>}
                           {lesion.area_px != null && <>Area: <strong style={{ color: D.text }}>{lesion.area_px} px²</strong></>}
                         </div>
-                        <div style={{ fontFamily: D.mono, fontSize: 10, color: D.muted, marginTop: 2 }}>
-                          {lesion.bbox ? `[${lesion.bbox.join(', ')}]` : `[${(lesion.x / 100).toFixed(2)}, ${(lesion.y / 100).toFixed(2)}]`}
+                        <div style={{ fontSize: 10, color: D.muted, marginTop: 1 }}>
+                          Region: {getLesionRegion(lesion.x, lesion.y)}
                         </div>
-                        {/* Tooltip arrow */}
-                        <div style={{
-                          position: 'absolute', bottom: -5, left: '50%',
-                          width: 8, height: 8, background: 'rgba(5,13,20,0.96)',
-                          borderRight: `1px solid ${lt.color}60`,
-                          borderBottom: `1px solid ${lt.color}60`,
-                          transform: 'translateX(-50%) rotate(45deg)',
-                        }} />
                       </div>
                     )}
                   </div>
@@ -502,16 +526,16 @@ export default function Results({
 
             {/* Quadrant radar */}
             <div style={{
-              position: 'absolute', bottom: 16, right: 16,
-              background: 'rgba(5,13,20,0.9)', backdropFilter: 'blur(6px)',
-              border: `1px solid ${D.border}`,
-              borderRadius: 8, padding: '10px 14px',
-              fontFamily: D.mono, fontSize: 11, zIndex: 20,
+              position: 'absolute', bottom: 14, right: 14,
+              background: 'rgba(15,23,42,0.85)', backdropFilter: 'blur(6px)',
+              border: `1px solid rgba(255,255,255,0.12)`,
+              borderRadius: 8, padding: '7px 11px',
+              fontFamily: D.mono, fontSize: 10, zIndex: 20,
             }}>
-              <div style={{ fontSize: 9, color: D.muted, letterSpacing: '0.1em', marginBottom: 8, textAlign: 'center' }}>⊕ QUADRANT RADAR</div>
-              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '3px 18px', textAlign: 'center' }}>
+              <div style={{ fontSize: 9, color: '#94a3b8', letterSpacing: '0.06em', marginBottom: 5, textAlign: 'center' }}>QUADRANTS</div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '2px 12px', textAlign: 'center' }}>
                 {[['ST', quadCounts.ST], ['SN', quadCounts.SN], ['IT', quadCounts.IT], ['IN', quadCounts.IN]].map(([q, c]) => (
-                  <div key={q}><span style={{ color: D.muted }}>{q}: </span><strong style={{ color: D.teal }}>{c}</strong></div>
+                  <div key={q}><span style={{ color: '#94a3b8' }}>{q}: </span><strong style={{ color: '#38bdf8' }}>{c}</strong></div>
                 ))}
               </div>
             </div>
@@ -519,33 +543,44 @@ export default function Results({
 
           {/* Legend strip */}
           <div style={{
-            display: 'flex', alignItems: 'center', gap: 18, flexWrap: 'wrap',
-            padding: '10px 16px',
-            background: D.panel, borderTop: `1px solid ${D.border}`,
+            display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap',
+            padding: '8px 18px',
+            background: '#ffffff', borderTop: `1px solid ${D.border}`,
             flexShrink: 0,
           }}>
-            <span style={{ fontFamily: D.mono, fontSize: 9, color: D.muted, letterSpacing: '0.07em' }}>Pathological Markers:</span>
-            {presentTypes.map(t => (
-              <span key={t.type} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: D.sub }}>
-                <span style={{ width: 9, height: 9, borderRadius: '50%', background: t.color, boxShadow: `0 0 5px ${t.color}`, display: 'inline-block' }} />
+            <span style={{ fontSize: 11, fontWeight: 600, color: D.sub }}>Markers:</span>
+            {LEGEND_TYPES.map(t => (
+              <span key={t.type} style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 11, color: D.text, fontWeight: 500 }}>
+                <span style={{ width: 8, height: 8, borderRadius: '50%', background: t.color, display: 'inline-block' }} />
                 {t.label}
               </span>
             ))}
+            {showHeatmap && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: D.sub, marginLeft: 6, paddingLeft: 10, borderLeft: `1px solid ${D.border}` }}>
+                <span>Saliency:</span>
+                <span style={{ fontSize: 10, color: '#64748b' }}>Cold (0)</span>
+                <div style={{ width: 55, height: 8, borderRadius: 4, background: 'linear-gradient(to right, #0000ff, #00ffff, #00ff00, #ffff00, #ff0000)', boxShadow: 'inset 0 0 1px rgba(0,0,0,0.3)' }} />
+                <span style={{ fontSize: 10, color: '#dc2626', fontWeight: 700 }}>Hot (1.0)</span>
+              </div>
+            )}
             <div style={{ flex: 1 }} />
-            <span style={{ fontFamily: D.mono, fontSize: 9, color: D.muted }}>Ben Graham Normalization · 512×512 Standard</span>
+            <span style={{ fontSize: 11, color: D.muted }}>512×512 Standard</span>
           </div>
         </div>
 
-        {/* ════ RIGHT PANEL — Probability + Findings ════ */}
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', background: D.bg, overflow: 'hidden' }}>
+        {/* ════ RIGHT PANEL — Probability + Findings (INDEPENDENTLY SCROLLABLE) ════ */}
+        <div style={{
+          flex: 1, minWidth: 0, minHeight: 0, height: '100%',
+          display: 'flex', flexDirection: 'column', background: '#ffffff', overflow: 'hidden',
+        }}>
 
           {/* Probability distribution */}
-          <div style={{ padding: '18px 20px 16px', borderBottom: `1px solid ${D.border}`, flexShrink: 0 }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <span style={{ fontFamily: D.mono, fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', color: D.text }}>
-                ICDR ORDINAL PROBABILITY DISTRIBUTION
+          <div style={{ padding: '14px 22px 12px', borderBottom: `1px solid ${D.border}`, flexShrink: 0, background: '#f8fafc' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: D.text, letterSpacing: '0.02em' }}>
+                ICDR ORDINAL SEVERITY PROBABILITIES
               </span>
-              <span style={{ fontFamily: D.mono, fontSize: 9, color: D.teal, border: `1px solid ${D.border}`, padding: '2px 8px', borderRadius: 4 }}>
+              <span style={{ fontSize: 10, fontWeight: 600, color: D.primary, background: '#e0f2fe', padding: '2px 8px', borderRadius: 4, border: '1px solid #bae6fd' }}>
                 Calibrated Softmax
               </span>
             </div>
@@ -553,26 +588,23 @@ export default function Results({
               const prob   = probs[g.key] || 0;
               const isPred = g.key === sev;
               return (
-                <div key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 11 }}>
+                <div key={g.key} style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 7 }}>
                   <span style={{
                     width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
-                    background: isPred ? g.color : 'transparent',
-                    border: `2px solid ${isPred ? g.color : 'transparent'}`,
-                    boxShadow: isPred ? `0 0 6px ${g.color}` : 'none',
+                    background: isPred ? g.color : '#cbd5e1',
                   }} />
-                  <span style={{ fontFamily: D.mono, fontSize: 11, minWidth: 170, color: isPred ? D.text : D.sub, fontWeight: isPred ? 700 : 400 }}>
+                  <span style={{ fontSize: 12, minWidth: 160, color: isPred ? D.text : D.sub, fontWeight: isPred ? 700 : 500 }}>
                     {g.name}
                   </span>
-                  <div style={{ flex: 1, height: 5, background: 'rgba(255,255,255,0.06)', borderRadius: 3, overflow: 'hidden' }}>
+                  <div style={{ flex: 1, height: 6, background: '#e2e8f0', borderRadius: 3, overflow: 'hidden' }}>
                     <div style={{
                       height: '100%', width: `${prob}%`,
-                      background: isPred ? g.color : 'rgba(255,255,255,0.14)',
+                      background: isPred ? g.color : '#94a3b8',
                       borderRadius: 3,
-                      boxShadow: isPred ? `0 0 8px ${g.color}60` : 'none',
-                      animation: 'bar-grow 0.9s cubic-bezier(0.4,0,0.2,1) both',
+                      animation: 'bar-grow 0.6s ease both',
                     }} />
                   </div>
-                  <span style={{ fontFamily: D.mono, fontSize: 11, minWidth: 34, textAlign: 'right', color: isPred ? g.color : D.sub, fontWeight: isPred ? 700 : 400 }}>
+                  <span style={{ fontFamily: D.mono, fontSize: 11, minWidth: 36, textAlign: 'right', color: isPred ? g.color : D.muted, fontWeight: isPred ? 800 : 500 }}>
                     {prob}%
                   </span>
                 </div>
@@ -580,58 +612,90 @@ export default function Results({
             })}
           </div>
 
-          {/* Indexed findings */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          {/* Indexed findings (Constrained Flex Child) */}
+          <div style={{ flex: 1, minHeight: 0, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
             <div style={{
               display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-              padding: '13px 20px 9px', borderBottom: `1px solid ${D.border}`, flexShrink: 0,
+              padding: '10px 22px 8px', borderBottom: `1px solid ${D.border}`, flexShrink: 0, flexWrap: 'wrap', gap: 8,
+              background: '#ffffff',
             }}>
-              <span style={{ fontFamily: D.mono, fontSize: 11, fontWeight: 700, letterSpacing: '0.06em', color: D.text }}>
-                INDEXED PATHOLOGICAL FINDINGS ({lesions.length})
+              <span style={{ fontSize: 12, fontWeight: 700, color: D.text }}>
+                INDEXED PATHOLOGICAL FINDINGS ({filteredLesions.length}{filteredLesions.length !== lesions.length ? ` of ${lesions.length}` : ''})
               </span>
-              <span style={{ fontFamily: D.mono, fontSize: 9, color: D.teal }}>Morphological Segmentor</span>
+              
+              {/* Category Filter Pills */}
+              <div style={{ display: 'flex', gap: 5, flexWrap: 'wrap' }}>
+                {[
+                  { key: 'all', label: `All (${typeCounts.all})` },
+                  ...(typeCounts.microaneurysm > 0 ? [{ key: 'microaneurysm', label: `MA (${typeCounts.microaneurysm})` }] : []),
+                  ...(typeCounts.hemorrhage > 0 ? [{ key: 'hemorrhage', label: `HE (${typeCounts.hemorrhage})` }] : []),
+                  ...(typeCounts.hardExudate > 0 ? [{ key: 'hardExudate', label: `EX (${typeCounts.hardExudate})` }] : []),
+                ].map(pill => (
+                  <button
+                    key={pill.key}
+                    onClick={() => setFilterType(pill.key)}
+                    style={{
+                      all: 'unset', cursor: 'pointer',
+                      padding: '3px 9px', borderRadius: 6,
+                      fontSize: 11, fontWeight: 600,
+                      background: filterType === pill.key ? '#0284c7' : '#f1f5f9',
+                      border: `1px solid ${filterType === pill.key ? '#0284c7' : '#e2e8f0'}`,
+                      color: filterType === pill.key ? '#ffffff' : D.sub,
+                      transition: 'all 0.12s',
+                    }}
+                  >
+                    {pill.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Optional lesion summary strip */}
             {lesionSummary && (
               <div style={{
-                display: 'flex', alignItems: 'center', gap: 14, padding: '7px 20px',
-                background: 'rgba(255,255,255,0.02)', borderBottom: `1px solid ${D.border}`,
-                fontSize: 10, fontFamily: D.mono, color: D.sub, flexWrap: 'wrap',
+                display: 'flex', alignItems: 'center', gap: 14, padding: '7px 22px',
+                background: '#f8fafc', borderBottom: `1px solid ${D.border}`,
+                fontSize: 11, color: D.sub, flexWrap: 'wrap', flexShrink: 0,
               }}>
                 {lesionSummary.microaneurysm_count != null && (
-                  <span>MA: <strong style={{ color: '#ef4444' }}>{lesionSummary.microaneurysm_count}</strong></span>
+                  <span>Microaneurysms: <strong style={{ color: '#dc2626' }}>{lesionSummary.microaneurysm_count}</strong></span>
                 )}
                 {lesionSummary.hemorrhage_count != null && (
-                  <span>HE: <strong style={{ color: '#f97316' }}>{lesionSummary.hemorrhage_count}</strong></span>
+                  <span>Hemorrhages: <strong style={{ color: '#ea580c' }}>{lesionSummary.hemorrhage_count}</strong></span>
                 )}
                 {(lesionSummary.exudate_count != null || lesionSummary.hard_exudate_count != null) && (
-                  <span>EX: <strong style={{ color: '#eab308' }}>{lesionSummary.exudate_count ?? lesionSummary.hard_exudate_count}</strong></span>
+                  <span>Hard Exudates: <strong style={{ color: '#0284c7' }}>{lesionSummary.exudate_count ?? lesionSummary.hard_exudate_count}</strong></span>
                 )}
                 {lesionSummary.total_lesion_area_px != null && (
-                  <span>Total Area: <strong style={{ color: D.teal }}>{lesionSummary.total_lesion_area_px} px²</strong></span>
+                  <span>Total Area: <strong style={{ color: D.text }}>{lesionSummary.total_lesion_area_px} px²</strong></span>
                 )}
               </div>
             )}
 
             {/* Column headers */}
             <div style={{
-              display: 'grid', gridTemplateColumns: '28px 90px 1fr 75px 50px',
-              padding: '5px 20px', borderBottom: `1px solid ${D.border}`, flexShrink: 0,
+              display: 'grid', gridTemplateColumns: '32px 140px 1fr 75px 55px',
+              padding: '7px 22px', borderBottom: `1px solid ${D.border}`, flexShrink: 0,
+              background: '#f1f5f9', fontSize: 10, fontWeight: 700, color: D.muted, letterSpacing: '0.04em', textTransform: 'uppercase',
             }}>
-              {['#', 'Finding', 'Region', 'Area', 'Conf'].map(h => (
-                <span key={h} style={{ fontFamily: D.mono, fontSize: 9, color: D.muted, letterSpacing: '0.07em', textTransform: 'uppercase' }}>{h}</span>
-              ))}
+              <span>#</span>
+              <span>Finding</span>
+              <span>Region</span>
+              <span>Area</span>
+              <span style={{ textAlign: 'right' }}>Conf</span>
             </div>
 
-            {/* Rows */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
-              {lesions.length === 0 && (
-                <div style={{ padding: '32px 20px', textAlign: 'center', fontFamily: D.mono, fontSize: 12, color: D.sub }}>
-                  ✓ No lesions detected — healthy retina
+            {/* Dedicated Scrollable Rows Container (Independent Scrolling) */}
+            <div style={{
+              flex: 1, minHeight: 0, overflowY: 'auto', padding: '2px 0',
+              scrollbarWidth: 'thin',
+            }}>
+              {filteredLesions.length === 0 && (
+                <div style={{ padding: '36px 20px', textAlign: 'center', fontSize: 13, color: D.muted }}>
+                  {lesions.length === 0 ? '✓ No pathological lesions detected — healthy retina' : 'No lesions matching selected filter'}
                 </div>
               )}
-              {lesions.map(lesion => {
+              {filteredLesions.map(lesion => {
                 const lt    = lesion.lt;
                 const region = getLesionRegion(lesion.x, lesion.y);
                 const isHov  = hoveredId === lesion.id;
@@ -640,30 +704,33 @@ export default function Results({
                     onMouseEnter={() => setHoveredId(lesion.id)}
                     onMouseLeave={() => setHoveredId(null)}
                     style={{
-                      display: 'grid', gridTemplateColumns: '28px 90px 1fr 75px 50px',
-                      padding: '8px 20px', alignItems: 'center',
-                      background: isHov ? 'rgba(0,212,170,0.07)' : 'transparent',
-                      borderLeft: isHov ? `2px solid ${D.teal}` : '2px solid transparent',
-                      borderBottom: '1px solid rgba(255,255,255,0.03)',
+                      display: 'grid', gridTemplateColumns: '32px 140px 1fr 75px 55px',
+                      padding: '8px 22px', alignItems: 'center',
+                      background: isHov ? '#f0f9ff' : '#ffffff',
+                      borderLeft: isHov ? `3px solid ${D.primary}` : '3px solid transparent',
+                      borderBottom: '1px solid #f1f5f9',
                       transition: 'all 0.12s', cursor: 'pointer',
                     }}
                   >
                     <span style={{ fontFamily: D.mono, fontSize: 11, color: D.muted }}>#{lesion.id}</span>
                     <span style={{
+                      display: 'inline-flex', alignItems: 'center', gap: 4,
                       padding: '2px 8px', borderRadius: 4,
-                      background: `${lt.color}20`, border: `1px solid ${lt.color}50`,
-                      fontFamily: D.mono, fontSize: 10, fontWeight: 700, color: lt.color,
+                      background: lt.color === '#ef4444' || lt.color === '#dc2626' ? '#fee2e2' : lt.color === '#f97316' || lt.color === '#ea580c' ? '#ffedd5' : '#e0f2fe',
+                      border: `1px solid ${lt.color === '#ef4444' || lt.color === '#dc2626' ? '#fecaca' : lt.color === '#f97316' || lt.color === '#ea580c' ? '#fed7aa' : '#bae6fd'}`,
+                      fontSize: 11, fontWeight: 700,
+                      color: lt.color === '#ef4444' || lt.color === '#dc2626' ? '#b91c1c' : lt.color === '#f97316' || lt.color === '#ea580c' ? '#c2410c' : '#0284c7',
                       whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
                     }}>
                       {lt.symbol} {lt.label}
                     </span>
-                    <span style={{ fontFamily: D.mono, fontSize: 11, color: D.sub }}>{region}</span>
-                    <span style={{ fontFamily: D.mono, fontSize: 10, color: D.muted }}>
+                    <span style={{ fontSize: 12, color: D.text, fontWeight: 500 }}>{region}</span>
+                    <span style={{ fontSize: 11, color: D.muted }}>
                       {lesion.area_px != null ? `${lesion.area_px} px²` : '—'}
                     </span>
                     <span style={{
-                      fontFamily: D.mono, fontSize: 11, fontWeight: 700,
-                      color: lesion.confidence == null ? D.sub : lesion.confidence >= 90 ? '#22c55e' : lesion.confidence >= 80 ? D.teal : '#f59e0b',
+                      fontFamily: D.mono, fontSize: 11, fontWeight: 700, textAlign: 'right',
+                      color: lesion.confidence == null ? D.sub : lesion.confidence >= 90 ? '#15803d' : lesion.confidence >= 80 ? D.primary : '#b45309',
                     }}>
                       {lesion.confidence != null ? `${lesion.confidence}%` : '—'}
                     </span>
@@ -678,29 +745,25 @@ export default function Results({
   );
 }
 
-/* helper */
 function ToolBtn({ active, onClick, label, accent, icon }) {
   return (
     <button onClick={onClick} style={{
       all: 'unset', cursor: 'pointer',
-      display: 'flex', alignItems: 'center', gap: 5,
-      padding: '4px 10px', borderRadius: 5,
-      background: active ? (accent ? 'rgba(0,212,170,0.15)' : 'rgba(255,255,255,0.08)') : 'transparent',
-      border: `1px solid ${active ? (accent ? 'rgba(0,212,170,0.4)' : 'rgba(255,255,255,0.15)') : 'transparent'}`,
-      fontFamily: 'JetBrains Mono, monospace', fontSize: 11,
-      color: active ? (accent ? '#00d4aa' : '#e8f4f8') : '#3a5068',
+      display: 'flex', alignItems: 'center', gap: 6,
+      padding: '5px 12px', borderRadius: 6,
+      background: active ? '#f0f9ff' : '#ffffff',
+      border: `1px solid ${active ? '#0284c7' : '#cbd5e1'}`,
+      fontSize: 12, fontWeight: 600,
+      color: active ? '#0284c7' : '#475569',
       transition: 'all 0.12s',
+      boxShadow: active ? '0 1px 2px rgba(2,132,199,0.1)' : 'none',
     }}>
-      {icon && <span style={{ fontSize: 10 }}>{icon}</span>}
+      {icon && <span style={{ fontSize: 11 }}>{icon}</span>}
       {accent && (
         <span style={{
-          width: 12, height: 12, borderRadius: 3,
-          background: active ? '#00d4aa' : 'transparent',
-          border: `1.5px solid ${active ? '#00d4aa' : '#3a5068'}`,
-          display: 'inline-flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0,
-        }}>
-          {active && <span style={{ fontSize: 8, color: '#06111a', fontWeight: 900 }}>✓</span>}
-        </span>
+          width: 8, height: 8, borderRadius: '50%',
+          background: active ? '#0284c7' : '#94a3b8',
+        }} />
       )}
       {label}
     </button>

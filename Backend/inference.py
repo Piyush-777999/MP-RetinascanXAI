@@ -28,7 +28,7 @@ from segment import segment_lesions
 IMG_SIZE       = 224
 NUM_CLASSES    = 5
 DEVICE         = torch.device("cpu")   # ~140 ms per image — acceptable for demo
-OOD_LOW_CONF   = 0.40   # if max(softmax) < this → "Low Confidence" warning
+OOD_LOW_CONF   = 0.50   # if max(softmax) < this → "Low Confidence" warning
 
 # ICDR class info
 LEVEL_LABELS = [
@@ -84,37 +84,117 @@ def apply_ben_graham_clahe(img_pil: Image.Image, img_size: int) -> Image.Image:
     return Image.fromarray(img_enhanced.astype(np.uint8))
 
 
-# ─── OOD Validation (softened per Week-2 fix) ──────────────────────────────
-def validate_fundus_heuristic(img_np: np.ndarray) -> list[str]:
+# ─── Image Quality Assessment (IQA) & OOD Validation Gate ─────────────────
+def validate_fundus_and_quality(img_np: np.ndarray, img_pil: Image.Image) -> list[str]:
     """
-    Lightweight heuristic checks.  Returns a list of WARNING strings instead
-    of raising an exception.  The confidence-based OOD check in run_inference()
-    is the real gatekeeper for live images.
+    Validates that the uploaded image:
+      1. Is an ocular fundus photograph (not a pet, document, car, or random photo).
+      2. Has sufficient clinical quality (illumination, sharpness, vessel visibility).
 
-    img_np: float32 array in [0,1], shape (H, W, 3), RGB.
+    Raises:
+        ValueError with "OOD_REJECT: " prefix if the image fails quality/fundus checks,
+        prompting the clinician to re-upload.
     """
-    warnings = []
-
-    # 1 — Corner darkness: fundus images have a dark circular vignette
-    corners = np.concatenate([
-        img_np[:20, :20].ravel(),
-        img_np[:20, -20:].ravel(),
-        img_np[-20:, :20].ravel(),
-        img_np[-20:, -20:].ravel(),
-    ])
-    if corners.mean() > 0.50:   # raised from 0.35 → fewer false rejections
-        warnings.append("Corners unusually bright — possible non-fundus image.")
-
-    # 2 — Red-channel dominance in centre
     h, w = img_np.shape[:2]
-    cx, cy = h // 2, w // 2
-    center = img_np[cx - 30: cx + 30, cy - 30: cy + 30]
-    r_mean = center[:, :, 0].mean()
-    g_mean = center[:, :, 1].mean()
-    b_mean = center[:, :, 2].mean()
-    if r_mean < g_mean or r_mean < b_mean:
-        warnings.append("Retinal pigment signature weak — check image source.")
+    if h < 150 or w < 150:
+        raise ValueError(
+            "OOD_REJECT: Image resolution is too low (<150px) to evaluate retinal anatomy. "
+            "Please re-upload a higher resolution scan."
+        )
 
+    gray = cv2.cvtColor((img_np * 255).astype(np.uint8), cv2.COLOR_RGB2GRAY)
+    mean_val = float(gray.mean())
+
+    # 1. Under-exposure (pitch black or unilluminated scan)
+    if mean_val < 10.0:
+        raise ValueError(
+            "OOD_REJECT: Image is severely underexposed (too dark) for clinical evaluation. "
+            "Retinal structures are invisible. Please re-upload with proper illumination."
+        )
+
+    # 2. Over-exposure (severe flash glare / blown-out white)
+    if mean_val > 230.0:
+        raise ValueError(
+            "OOD_REJECT: Image is severely overexposed or washed out by flash glare. "
+            "Retinal landmarks are obscured. Please re-upload a properly exposed scan."
+        )
+
+    # 3. Retinal Field of View (FOV) coverage
+    mask = gray > 15
+    fov_ratio = float(mask.sum()) / float(h * w)
+    if fov_ratio < 0.10:
+        raise ValueError(
+            "OOD_REJECT: No visible retinal field detected. "
+            "Please ensure the image contains a clear fundus view."
+        )
+
+    # 4. Color / Retinal Melanin & Vascular Pigment Signature
+    r_mean = float(img_np[mask, 0].mean())
+    g_mean = float(img_np[mask, 1].mean())
+    b_mean = float(img_np[mask, 2].mean())
+
+    rg_ratio = r_mean / max(g_mean, 1e-4)
+    rb_ratio = r_mean / max(b_mean, 1e-4)
+    blue_excess = float(((img_np[:, :, 2] > img_np[:, :, 0]) & mask).sum()) / float(mask.sum())
+    blue_over_green = float(((img_np[:, :, 2] > img_np[:, :, 1]) & mask).sum()) / float(mask.sum())
+
+    if rb_ratio < 1.70:
+        raise ValueError(
+            f"OOD_REJECT: Image lacks characteristic retinal melanin pigment (R/B ratio {rb_ratio:.2f} < 1.70). "
+            "Please upload a valid retinal scan."
+        )
+    if rg_ratio < 1.10:
+        raise ValueError(
+            f"OOD_REJECT: Color profile does not match retinal anatomy (R/G ratio {rg_ratio:.2f} < 1.10). "
+            "Please upload a genuine retinal fundus image."
+        )
+    if blue_excess > 0.04:
+        raise ValueError(
+            f"OOD_REJECT: High blue/cool light content detected ({blue_excess*100:.1f}% pixels). "
+            "Not an ocular fundus photograph. Please upload a clinical retinal photograph."
+        )
+    if blue_over_green > 0.12:
+        raise ValueError(
+            f"OOD_REJECT: Unnatural cool hues detected ({blue_over_green*100:.1f}% blue>green). "
+            "Image does not match retinal fundus characteristics."
+        )
+
+    # 5. UI / Screenshot / Document Structural Check (Orthogonal straight line detection)
+    edges = cv2.Canny(gray, 50, 150)
+    min_len = int(min(h, w) * 0.10)
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, threshold=70, minLineLength=min_len, maxLineGap=5)
+    ortho_lines = 0
+    if lines is not None:
+        for l in lines:
+            x1, y1, x2, y2 = l.flatten()[:4]
+            angle = np.abs(np.arctan2(y2 - y1, x2 - x1) * 180 / np.pi)
+            if angle < 3 or abs(angle - 90) < 3 or abs(angle - 180) < 3:
+                ortho_lines += 1
+    if ortho_lines >= 4:
+        raise ValueError(
+            f"OOD_REJECT: Artificial rectangular geometry or UI window elements detected ({ortho_lines} straight edges). "
+            "Please upload an original fundus photograph directly, not a desktop screenshot."
+        )
+
+    # 6. Anatomical Blood Vessel Tree Visibility Check
+    green = (img_np[:, :, 1] * 255).astype(np.uint8)
+    clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
+    g_cl = clahe.apply(green)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9))
+    bothat = cv2.morphologyEx(g_cl, cv2.MORPH_BLACKHAT, kernel)
+    vessels = (bothat > 14) & mask
+    vessel_ratio = float(vessels.sum()) / float(mask.sum())
+
+    if vessel_ratio < 0.001:  # < 0.1% vessel structure found
+        raise ValueError(
+            "OOD_REJECT: Blood vessel tree cannot be identified. "
+            "The image either lacks retinal vasculature or suffers from severe defocus/blur. "
+            "Please re-upload a clear fundus image."
+        )
+
+    warnings = []
+    if vessel_ratio < 0.005:
+        warnings.append("Low vessel contrast detected — image quality may be marginal.")
     return warnings
 
 
@@ -134,13 +214,13 @@ def _build_model() -> nn.Module:
             sys.path.insert(0, ml_script_path)
         try:
             from model import build_model  # type: ignore
-            print("[inference] Using shared ml_script/model.py → build_model()")
+            print("[inference] Using shared ml_script/model.py -> build_model()")
             return build_model()
         except (ImportError, AttributeError):
             pass  # fall through to local definition
 
-    # ── Local fallback definition (kept in sync with ml_script/model.py) ──
-    print("[inference] Using local _build_model() — ml_script/model.py not yet ready.")
+    # -- Local fallback definition (kept in sync with ml_script/model.py) --
+    print("[inference] Using local _build_model() - ml_script/model.py not yet ready.")
     m = models.resnet50(weights=None)
     m.fc = nn.Sequential(
         nn.Dropout(0.4),
@@ -169,7 +249,7 @@ def get_model(model_path: str) -> nn.Module:
         _model.eval()
         _model_path = model_path
         epoch = checkpoint.get("epoch", "?") if isinstance(checkpoint, dict) else "?"
-        print(f"✅ Model loaded (epoch {epoch}): {model_path}")
+        print(f"[inference] [OK] Model loaded (epoch {epoch}): {model_path}")
     return _model
 
 
@@ -258,10 +338,10 @@ def run_inference(image_bytes: bytes, model_path: str, heatmap_save_path: str) -
     img_pil_orig = Image.open(io.BytesIO(image_bytes)).convert("RGB")
     img_np_orig  = np.array(img_pil_orig, dtype=np.float32) / 255.0
 
-    # ── 2. Heuristic OOD pre-check (warnings only, not hard reject) ─────────
-    heuristic_warnings = validate_fundus_heuristic(img_np_orig)
+    # ── 2. Image Quality Assessment & Fundus Gatekeeper ─────────────────────
+    heuristic_warnings = validate_fundus_and_quality(img_np_orig, img_pil_orig)
     for w in heuristic_warnings:
-        print(f"[OOD heuristic] ⚠  {w}")
+        print(f"[IQA/OOD] [WARN] {w}")
 
     # ── 3. CLAHE + Ben Graham preprocessing ────────────────────────────────
     img_pil_enhanced = apply_ben_graham_clahe(img_pil_orig, IMG_SIZE)
@@ -293,19 +373,40 @@ def run_inference(image_bytes: bytes, model_path: str, heatmap_save_path: str) -
     with torch.enable_grad():
         cam = grad_cam.generate(input_tensor, grade)
 
-    # ── 8. Overlay Grad-CAM on enhanced image ───────────────────────────────
-    cam_resized = cv2.resize(cam, (IMG_SIZE, IMG_SIZE))
-    heatmap_rgb = cv2.applyColorMap(np.uint8(255 * cam_resized), cv2.COLORMAP_JET)
-    heatmap_rgb = cv2.cvtColor(heatmap_rgb, cv2.COLOR_BGR2RGB).astype(np.float32) / 255.0
-    overlay     = np.clip(0.6 * img_np_enhanced + 0.4 * heatmap_rgb, 0, 1)
-    overlay_bgr = cv2.cvtColor(np.uint8(overlay * 255), cv2.COLOR_RGB2BGR)
+    # ── 8. Generate pixel-perfect Grad-CAM at original resolution ───────────
+    orig_w, orig_h = img_pil_orig.size
+    cam_full = cv2.resize(cam, (orig_w, orig_h), interpolation=cv2.INTER_CUBIC)
 
-    os.makedirs(os.path.dirname(os.path.abspath(heatmap_save_path)), exist_ok=True)
-    cv2.imwrite(heatmap_save_path, overlay_bgr)
-    heatmap_filename = os.path.basename(heatmap_save_path)
+    # Retinal FOV mask to confine heatmap strictly within the ocular lens
+    gray_orig = cv2.cvtColor(np.array(img_pil_orig), cv2.COLOR_RGB2GRAY)
+    mask_fov = gray_orig > 15
+    k_size = max(3, min(orig_w, orig_h) // 60)
+    mask_fov_eroded = cv2.erode(mask_fov.astype(np.uint8), cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k_size, k_size))) > 0
 
-    # ── 9. Lesion segmentation (Python port of segment_lesions.m) ───────────
-    seg_result = segment_lesions(img_pil_orig)   # uses original (not enhanced) for seg
+    # Clip cam_full to strictly [0.0, 1.0] to prevent cv2.INTER_CUBIC overshooting (>1.0)
+    # which wraps around in uint8 (256 -> 0) and creates an artificial dark blue hole at the peak!
+    cam_full = np.clip(cam_full, 0.0, 1.0)
+
+    # JET colormap
+    cam_u8 = np.uint8(255 * cam_full)
+    heatmap_bgr = cv2.applyColorMap(cam_u8, cv2.COLORMAP_JET)
+
+    # Clean alpha transparency: hot spots up to 75% opacity, cold blue suppressed, zero outside FOV
+    alpha = np.clip(cam_full * 1.2, 0, 1)
+    alpha[cam_full < 0.20] = alpha[cam_full < 0.20] * 0.15
+    alpha[~mask_fov_eroded] = 0.0
+    alpha_u8 = np.uint8(alpha * 0.75 * 255)
+
+    heatmap_bgra = cv2.cvtColor(heatmap_bgr, cv2.COLOR_BGR2BGRA)
+    heatmap_bgra[:, :, 3] = alpha_u8
+
+    heatmap_png_path = os.path.splitext(heatmap_save_path)[0] + ".png"
+    os.makedirs(os.path.dirname(os.path.abspath(heatmap_png_path)), exist_ok=True)
+    cv2.imwrite(heatmap_png_path, heatmap_bgra)
+    heatmap_filename = os.path.basename(heatmap_png_path)
+
+    # ── 9. Lesion segmentation with Grade-Aware ICDR Harmonization ───────────
+    seg_result = segment_lesions(img_pil_orig, predicted_grade=grade)
 
     # ── 10. Build API response ───────────────────────────────────────────────
     return {
