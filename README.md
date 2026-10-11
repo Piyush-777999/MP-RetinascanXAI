@@ -130,40 +130,61 @@ Actual Referable              26 (FN)                     363 (TP)
 
 ```
 MP-RetinascanXAI/
-├── Backend/
-│   ├── main.py                     # FastAPI server (/upload, /counterfactual-laser, /health)
-│   ├── inference.py                # ResNet-50 pipeline, Grad-CAM, OOD/IQA gatekeeper
-│   ├── counterfactual.py           # In-silico laser inpainting & causal attribution engine
-│   ├── segment.py                  # Morphological lesion segmentation & vessel subtraction
-│   └── requirements.txt            # Python backend dependencies
+├── Backend/                                # FastAPI High-Performance Asynchronous Backend
+│   ├── main.py                             # API endpoints: /upload, /counterfactual-laser, /eval-report, /health
+│   ├── inference.py                        # ResNet-50 forward pass, Grad-CAM, Ben Graham CLAHE, OOD gatekeeper
+│   ├── counterfactual.py                   # In-silico laser ablation, Telea inpainting, causal ΔP engine
+│   ├── segment.py                          # Morphological lesion segmentation, vessel subtraction, disc mask
+│   └── requirements.txt                    # Python dependencies (PyTorch, FastAPI, OpenCV, etc.)
 │
 ├── Frontend/
-│   └── retinascan-app/
+│   └── retinascan-app/                     # Hospital-Grade React 18 + Vite Web Application
 │       ├── src/
-│       │   ├── App.jsx             # Top-level state machine & screen routing
-│       │   ├── data.js             # Shared clinical data models & demo patient cases
-│       │   ├── index.css           # Hospital-grade design system tokens & animations
+│       │   ├── App.jsx                     # Application state machine, routing, and API integration
+│       │   ├── data.js                     # Clinical data schema, 12 demo patients, ICDR color tokens
+│       │   ├── index.css                   # Clinical hospital light design tokens, typography, keyframes
+│       │   ├── main.jsx                    # React entrypoint
 │       │   └── components/
-│       │       ├── Results.jsx     # Clinical workstation with In-Silico Laser & pins
-│       │       ├── Home.jsx        # Rapid triage portal & case selector
-│       │       ├── Upload.jsx      # Point-of-care patient intake & scan upload
-│       │       ├── QualityCheck.jsx# Automated IQA progress gate
-│       │       ├── Processing.jsx  # Multi-stage inference animation
-│       │       ├── Queue.jsx       # Tele-ophthalmology triage queue
-│       │       ├── Referral.jsx    # Automated referral slip generator
-│       │       └── Admin.jsx       # Screening analytics & audit logging
-│       ├── public/images/          # High-resolution fundus scans & heatmaps
-│       └── package.json            # Vite + React configuration
+│       │       ├── Results.jsx             # Workstation viewer, In-Silico Laser XAI, pins & dual prob bars
+│       │       ├── Canvas.jsx              # High-contrast PACS diagnostic canvas
+│       │       ├── Home.jsx                # Rural intake portal & instant case selector
+│       │       ├── Upload.jsx              # Point-of-care patient intake & scan upload
+│       │       ├── QualityCheck.jsx        # Automated Image Quality Assessment (IQA) gate
+│       │       ├── Processing.jsx          # Inference progress animation & diagnostic tracker
+│       │       ├── Queue.jsx               # Tele-ophthalmology triage queue with urgency badges
+│       │       ├── Referral.jsx            # Printable clinical referral letter generator
+│       │       ├── Admin.jsx               # Screening analytics & audit logging dashboard
+│       │       ├── Header.jsx              # Medical workstation top navigation bar
+│       │       └── Footer.jsx              # Tele-medicine compliance & clinical status bar
+│       ├── public/images/                  # High-resolution fundus scans, Grad-CAMs & counterfactual maps
+│       ├── package.json                    # Node dependencies & build scripts
+│       └── vite.config.js                  # Vite configuration & dev server options
 │
-├── ml_script/
-│   ├── model.py                    # PyTorch ResNet-50 architecture definition
-│   ├── train_classifier_v2.py      # Transfer learning training pipeline
-│   ├── evaluate_model.py           # Sensitivity, specificity, AUC validation script
-│   └── retinascan_resnet50_v2.pth  # Trained model weights (10-epoch fine-tuned)
+├── ml_script/                              # Deep Learning & Computer Vision Training Pipelines
+│   ├── model.py                            # PyTorch ResNet-50 architecture with custom dropout head
+│   ├── preprocess.py                       # Ben Graham circular FOV masking & CLAHE color balancing
+│   ├── train_classifier_v2.py              # Multi-center training pipeline (APTOS + MESSIDOR-2)
+│   ├── train_model.py                      # Baseline single-dataset training script
+│   ├── train_vessel_seg.py                 # Retinal vascular tree U-Net training pipeline
+│   ├── train_lesion_seg.py                 # Multi-class lesion segmentation U-Net pipeline
+│   ├── evaluate_model.py                   # Sensitivity, specificity, AUC-ROC & Youden's J optimizer
+│   ├── messidor_test.py                    # External camera validation script on MESSIDOR-2
+│   ├── visualise_metrics.py                # ROC curve, PR curve & confusion matrix generator
+│   ├── split_dataset.py                    # Multi-dataset 80/20 stratified train/validation splitter
+│   ├── retinascan_resnet50_v2.pth          # Active production weights (93.3% Sens / 86.2% Spec)
+│   ├── lesion_unet.pth                     # Pre-trained U-Net lesion segmentation weights
+│   ├── vessel_unet.pth                     # Pre-trained U-Net vessel extraction weights
+│   ├── evaluation_report_v2.json           # Locked performance metrics for ResNet-50 v2
+│   ├── evaluation_report.json              # Baseline v1 evaluation report
+│   ├── cross_dataset_report.json           # Cross-domain generalization test results
+│   └── matlab/                             # MathWorks Image Processing reference scripts
 │
-├── start_backend.bat               # One-click Windows script to start FastAPI
-├── start_frontend.bat              # One-click Windows script to start Vite dev server
-└── README.md                       # Comprehensive repository documentation
+├── start_backend.bat                       # One-click Windows launcher for FastAPI (port 8000)
+├── start_frontend.bat                      # One-click Windows launcher for Vite dev server (port 5173)
+├── install_deps.bat                        # Automated Windows dependency installation script
+├── run_training.bat                        # One-click trigger for model training pipeline
+├── model_link.txt                          # Cloud mirror links for large model weights
+└── README.md                               # Project documentation & clinical specifications
 ```
 
 ---
