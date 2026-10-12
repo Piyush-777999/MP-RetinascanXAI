@@ -408,7 +408,15 @@ def run_inference(image_bytes: bytes, model_path: str, heatmap_save_path: str) -
     # ── 9. Lesion segmentation with Grade-Aware ICDR Harmonization ───────────
     seg_result = segment_lesions(img_pil_orig, predicted_grade=grade)
 
-    # ── 10. Build API response ───────────────────────────────────────────────
+    # ── 10. Compute ETDRS 9-Zone Macular Grid & CSME Risk ────────────────────
+    try:
+        from etdrs import compute_etdrs_profile
+        etdrs_profile = compute_etdrs_profile(seg_result["lesions"], eye="od")
+    except Exception as etdrs_err:
+        print(f"[WARN] ETDRS computation error: {etdrs_err}")
+        etdrs_profile = None
+
+    # ── 11. Build API response ───────────────────────────────────────────────
     return {
         "severity":       grade,
         "confidence":     round(conf * 100, 1),
@@ -418,5 +426,6 @@ def run_inference(image_bytes: bytes, model_path: str, heatmap_save_path: str) -
         "all_probs":      [round(float(p), 4) for p in probs.tolist()],
         "lesions":        seg_result["lesions"],
         "lesion_summary": seg_result["lesion_summary"],
+        "etdrs_profile":  etdrs_profile,
         "ood_warnings":   heuristic_warnings,   # surfaced to frontend for transparency
     }

@@ -4,6 +4,7 @@ import {
   normalizeLesionType,
   getLesionRegion,
 } from '../data.js';
+import { getFullImageUrl } from '../apiConfig.js';
 
 /* ── Design tokens (Hospital Clinical Light Theme) ────────────────────────── */
 const D = {
@@ -152,10 +153,40 @@ export default function Canvas({
     return base;
   }, [allProbs, patient?.all_probs, sev, patient?.confidence]);
 
+  const [imgAspect, setImgAspect] = useState(1);
+  const handleImageLoad = (e) => {
+    if (e.target.naturalWidth && e.target.naturalHeight) {
+      setImgAspect(e.target.naturalWidth / e.target.naturalHeight);
+    }
+  };
+
+  const imgBounds = useMemo(() => {
+    if (imgAspect >= 1) {
+      const heightPct = 100 / imgAspect;
+      const topPct = (100 - heightPct) / 2;
+      return {
+        width: '100%',
+        height: `${heightPct}%`,
+        left: '0%',
+        top: `${topPct}%`,
+      };
+    } else {
+      const widthPct = 100 * imgAspect;
+      const leftPct = (100 - widthPct) / 2;
+      return {
+        width: `${widthPct}%`,
+        height: '100%',
+        left: `${leftPct}%`,
+        top: '0%',
+      };
+    }
+  }, [imgAspect]);
+
   const fundusPath = uploadedImageUrl || patient?.imageUrl || `/images/img_${sev}_${eye}.jpg`;
-  const heatmapPath = heatmapUrl
-    ? (heatmapUrl.startsWith('http') ? heatmapUrl : `http://localhost:8000${heatmapUrl}`)
-    : '';
+  const defaultPresetHeatmap = `/images/heatmap_${sev}_${eye}.png`;
+  const heatmapPath = uploadedImageUrl
+    ? (heatmapUrl ? getFullImageUrl(heatmapUrl) : '')
+    : defaultPresetHeatmap;
 
   // Quadrant counts
   const quadCounts = { ST: 0, SN: 0, IT: 0, IN: 0 };
@@ -380,50 +411,58 @@ export default function Canvas({
               borderRadius: '50%',
               overflow: 'hidden',
               boxShadow: '0 0 0 1px rgba(255,255,255,0.06), 0 0 60px rgba(0,0,0,0.8)',
+              background: '#04080d',
               flexShrink: 0,
             }}>
-              {/* Fundus base */}
-              {imgError ? (
-                <div style={{
-                  width: '100%', height: '100%',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  background: '#111820', color: D.muted, fontFamily: D.mono, fontSize: 12, gap: 10,
-                }}>
-                  <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#3a5068" strokeWidth="1.5">
-                    <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
-                    <circle cx="8.5" cy="8.5" r="1.5"/>
-                    <polyline points="21 15 16 10 5 21"/>
-                  </svg>
-                  <span>Image unavailable</span>
-                </div>
-              ) : (
-                <img
-                  src={fundusPath}
-                  alt={`Fundus ${eye.toUpperCase()} Sev${sev}`}
-                  onError={() => setImgError(true)}
-                  style={{
-                    width: '100%', height: '100%', objectFit: 'cover',
-                    display: 'block',
-                    filter: [
-                      showRedFree ? 'sepia(1) saturate(0.3) hue-rotate(90deg) contrast(1.2)' : '',
-                    ].filter(Boolean).join(' ') || 'none',
-                  }}
-                />
-              )}
+              {/* Calibrated letterbox frame locked to fundus aspect ratio */}
+              <div style={{
+                position: 'absolute',
+                ...imgBounds,
+                overflow: 'visible',
+              }}>
+                {/* Fundus base */}
+                {imgError ? (
+                  <div style={{
+                    width: '100%', height: '100%',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                    background: '#111820', color: D.muted, fontFamily: D.mono, fontSize: 12, gap: 10,
+                  }}>
+                    <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#3a5068" strokeWidth="1.5">
+                      <rect x="3" y="3" width="18" height="18" rx="2" ry="2"/>
+                      <circle cx="8.5" cy="8.5" r="1.5"/>
+                      <polyline points="21 15 16 10 5 21"/>
+                    </svg>
+                    <span>Image unavailable</span>
+                  </div>
+                ) : (
+                  <img
+                    src={fundusPath}
+                    alt={`Fundus ${eye.toUpperCase()} Sev${sev}`}
+                    onLoad={handleImageLoad}
+                    onError={() => setImgError(true)}
+                    style={{
+                      width: '100%', height: '100%', objectFit: 'contain',
+                      display: 'block',
+                      filter: [
+                        showRedFree ? 'sepia(1) saturate(0.3) hue-rotate(90deg) contrast(1.2)' : '',
+                      ].filter(Boolean).join(' ') || 'none',
+                    }}
+                  />
+                )}
 
-              {/* Grad-CAM heatmap overlay */}
-              {showHeatmap && heatmapPath && !heatmapError && (
-                <img
-                  src={heatmapPath}
-                  alt="Grad-CAM"
-                  onError={() => setHeatmapError(true)}
-                  style={{
-                    position: 'absolute', inset: 0,
-                    width: '100%', height: '100%', objectFit: 'cover',
-                    pointerEvents: 'none',
-                  }}
-                />
-              )}
+                {/* Grad-CAM heatmap overlay */}
+                {showHeatmap && heatmapPath && !heatmapError && (
+                  <img
+                    src={heatmapPath}
+                    alt="Grad-CAM"
+                    onError={() => setHeatmapError(true)}
+                    style={{
+                      position: 'absolute', inset: 0,
+                      width: '100%', height: '100%', objectFit: 'contain',
+                      pointerEvents: 'none',
+                    }}
+                  />
+                )}
 
               {/* Empty state overlay on canvas */}
               {showPins && lesions.length === 0 && (
@@ -525,6 +564,7 @@ export default function Canvas({
                   </div>
                 );
               })}
+              </div>
             </div>
 
             {/* ── Quadrant Radar — bottom right inset ── */}
