@@ -27,11 +27,11 @@ from torch.utils.data import Dataset, DataLoader
 from torchvision import models, transforms
 
 # ── Paths ──────────────────────────────────────────────────────────────────────
-REPO       = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-APTOS_CSV  = r"D:\AntiGravity projects\SIH\DataSet\aptos2019-blindness-detection\train.csv"
-APTOS_IMGS = r"D:\AntiGravity projects\SIH\DataSet\aptos2019-blindness-detection\train_images"
-MESS_CSV   = r"D:\AntiGravity projects\SIH\DataSet\messidor\messidor_data.xls"
-MESS_IMGS  = r"D:\AntiGravity projects\SIH\DataSet\messidor\IMAGES.zip\IMAGES"
+DATASET_BASE = os.environ.get("DATASET_BASE", os.path.join(REPO, "dataset"))
+APTOS_CSV  = os.environ.get("APTOS_CSV", os.path.join(DATASET_BASE, "aptos2019-blindness-detection", "train.csv"))
+APTOS_IMGS = os.environ.get("APTOS_IMGS", os.path.join(DATASET_BASE, "aptos2019-blindness-detection", "train_images"))
+MESS_CSV   = os.environ.get("MESS_CSV", os.path.join(DATASET_BASE, "messidor", "messidor_data.xls"))
+MESS_IMGS  = os.environ.get("MESS_IMGS", os.path.join(DATASET_BASE, "messidor", "IMAGES.zip", "IMAGES"))
 CKPT_DIR   = os.path.join(REPO, "ml_script", "checkpoints")
 CKPT_LATEST= os.path.join(CKPT_DIR, "classifier_latest.pth")
 OUT_PTH    = os.path.join(REPO, "ml_script", "retinascan_resnet50_v2.pth")
@@ -318,7 +318,7 @@ report = {
         "confusion_matrix":  {"true_positive": int(tp), "true_negative": int(tn),
                               "false_positive": int(fp), "false_negative": int(fn)},
     },
-    "sih_targets_met": {
+    "benchmark_targets_met": {
         "sensitivity_90_percent": sens >= 0.90,
         "specificity_85_percent": spec >= 0.85,
     },
@@ -330,6 +330,6 @@ print(f"\n[RESULT] Sensitivity : {sens*100:.2f}%")
 print(f"[RESULT] Specificity : {spec*100:.2f}%")
 print(f"[RESULT] AUC-ROC     : {auc_score:.4f}")
 print(f"[RESULT] Threshold   : {opt_thresh:.4f}")
-print(f"[RESULT] SIH Sens>=90%: {sens >= 0.90}  |  SIH Spec>=85%: {spec >= 0.85}")
+print(f"[RESULT] Benchmark Sens>=90%: {sens >= 0.90}  |  Benchmark Spec>=85%: {spec >= 0.85}")
 print(f"[RESULT] Report -> {OUT_REPORT}")
 print("\n[done] Training complete!")

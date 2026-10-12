@@ -1,6 +1,6 @@
-# Hackathon Demo Script
+# Clinical Demonstration Walkthrough
 
-**RetinaScan-XAI: Live Demo Walkthrough for SIH 2026 Judges**
+**RetinaScan-XAI: Interactive Clinical Demonstration Guide**
 
 Version: 1.0 | Duration: 8-10 minutes
 
@@ -64,11 +64,11 @@ Version: 1.0 | Duration: 8-10 minutes
 ### Act 8: Metrics (30 sec)
 - Navigate to Admin dashboard
 - Or verbally state: "97.6% sensitivity, 89.2% specificity, 0.978 AUC on APTOS 2019"
-- "This meets the SIH target of 90% sensitivity and 85% specificity"
+- "This meets the clinical benchmark target of 90% sensitivity and 85% specificity"
 
 ---
 
-## Judge Q&A Cheat Sheet
+## Technical & Clinical Q&A Cheat Sheet
 
 | Question | Answer |
 |----------|--------|
@@ -95,4 +95,4 @@ Version: 1.0 | Duration: 8-10 minutes
 | Frontend blank screen | Ctrl+Shift+R, then F5 |
 | Upload hangs | Check backend terminal for errors |
 | OOD rejects a real fundus image | Use a different image, or mention "conservative screening threshold" |
-| Judges ask about a feature that doesn't exist | "That's in our v2 roadmap" |
+| Technical queries on extended features | "That's in our v2 roadmap" |

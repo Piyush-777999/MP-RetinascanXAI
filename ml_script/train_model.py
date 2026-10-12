@@ -9,7 +9,7 @@ USAGE:
     python train_model.py
 
 Expects dataset at:
-    D:/AntiGravity projects/SIH/DataSet/aptos2019-blindness-detection/
+    dataset/aptos2019-blindness-detection/
         train.csv
         train_images/  (contains *.png files)
 """
@@ -42,7 +42,7 @@ from preprocess import train_transforms, val_transforms  # noqa: E402
 # ─────────────────────────────────────────────────────────────────────────────
 # CONFIGURATION
 # ─────────────────────────────────────────────────────────────────────────────
-DATASET_ROOT = r"D:\AntiGravity projects\SIH\DataSet\aptos2019-blindness-detection"
+DATASET_ROOT = os.environ.get("DATASET_ROOT", r"dataset\aptos2019-blindness-detection")
 TRAIN_CSV    = os.path.join(DATASET_ROOT, "train.csv")
 TRAIN_DIR    = os.path.join(DATASET_ROOT, "train_images")
 OUTPUT_DIR   = os.path.dirname(os.path.abspath(__file__))
@@ -297,7 +297,7 @@ def main():
     print(f"   AUC-ROC     : {best_metrics['auc_roc']:.3f}")
     print(f"   F1 Score    : {best_metrics['f1']:.3f}")
 
-    # Check if we meet the SIH targets
+    # Check if we meet the clinical benchmark targets
     sens_ok = best_metrics["sensitivity"] >= 0.90
     spec_ok = best_metrics["specificity"] >= 0.85
     print(f"\n   ✅ Sensitivity ≥ 90%: {'PASS ✅' if sens_ok else 'FAIL ❌ (retrain needed)'}")

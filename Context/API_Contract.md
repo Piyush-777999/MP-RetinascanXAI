@@ -170,7 +170,7 @@ Returns the full model evaluation metrics.
       "false_negative": 7
     }
   },
-  "sih_targets_met": {
+  "benchmark_targets_met": {
     "sensitivity_90_percent": true,
     "specificity_85_percent": true
   }

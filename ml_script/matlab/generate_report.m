@@ -140,7 +140,7 @@ function generate_report(image_path, grade, confidence, patient_name, output_pdf
     
     metrics_table = Table(4);
     header_row    = TableRow();
-    for h = {'Metric', 'Result', 'SIH Target', 'Status'}
+    for h = {'Metric', 'Result', 'Benchmark', 'Status'}
         hc = TableEntry(h{1}); hc.Bold = true; hc.BackgroundColor = '0B5563';
         hc.FontColor = 'FFFFFF';
         append(header_row, hc);

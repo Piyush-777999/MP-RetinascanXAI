@@ -7,8 +7,7 @@
 [![Vite](https://img.shields.io/badge/Vite-5.0+-646CFF?style=flat&logo=vite&logoColor=white)](https://vitejs.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg)](LICENSE)
 
-> **Explainable AI-Powered Point-of-Care Diabetic Retinopathy Screening, Automated ETDRS Macular Staging & In-Silico Counterfactual Laboratory for Rural Primary Health Centers.**  
-> *Developed for Smart India Hackathon (SIH) · Problem Statement PS38.*
+> **Explainable AI-Powered Point-of-Care Diabetic Retinopathy Screening, Automated ETDRS Macular Staging & In-Silico Counterfactual Laboratory for Primary Eye Care.**
 
 ---
 
@@ -25,8 +24,7 @@
 - [System Architecture](#-system-architecture)
 - [Clinical Performance & Validation (ResNet-50 v2)](#-clinical-performance--validation-resnet-50-v2)
 - [Repository Structure](#-repository-structure)
-- [Quickstart & Demo Execution (2 Clicks)](#-quickstart--demo-execution-2-clicks)
-- [Cloud Deployment Guide (Render & Hugging Face)](#-cloud-deployment-guide-render--hugging-face)
+- [Installation & Getting Started](#-installation--getting-started)
 - [REST API Reference](#-rest-api-reference)
 - [Ethical, Privacy & Clinical Safeguards](#-ethical-privacy--clinical-safeguards)
 
@@ -34,9 +32,9 @@
 
 ## 🌟 Executive Overview
 
-Diabetic Retinopathy (DR) is the single leading cause of preventable blindness among working-age adults globally. In rural India and low-resource settings, Primary Health Centres (PHCs) face an acute shortage of vitreoretinal specialists, resulting in late-stage presentations of vision-threatening Proliferative DR (PDR) and Clinically Significant Macular Edema (CSME).
+Diabetic Retinopathy (DR) is the single leading cause of preventable blindness among working-age adults globally. In low-resource settings and rural areas, primary health centers face an acute shortage of vitreoretinal specialists, resulting in late-stage presentations of vision-threatening Proliferative DR (PDR) and Clinically Significant Macular Edema (CSME).
 
-**RetinaScan-XAI** is an offline-first, hospital-grade Clinical Decision Support System (CDSS) that empowers Accredited Social Health Activists (ASHAs), Auxiliary Nurse Midwives (ANMs), and general medical officers to perform instant, explainable DR screening at the point of care.
+**RetinaScan-XAI** is an offline-first, hospital-grade Clinical Decision Support System (CDSS) that empowers healthcare workers, optometrists, and general practitioners to perform instant, explainable DR screening at the point of care using standard retinal fundus photographs.
 
 Unlike conventional "black-box" classifiers, RetinaScan-XAI delivers **quad-level clinical explainability**:
 1. **Global Diagnostic Saliency (Grad-CAM++):** Visualizes the exact deep neural receptive fields that drove the ICDR severity grading.
@@ -55,16 +53,16 @@ Unlike conventional "black-box" classifiers, RetinaScan-XAI delivers **quad-leve
 | **Pathology Pinpointing** | Coarse bounding boxes or none | **Sub-pixel centroid segmentation + 4-quadrant anatomical radar (ST, SN, IT, IN)** |
 | **Camera Sensor Parity** | Crops wide-angle sensors by 34%, hiding optic disc | **Dynamic Letterbox Aspect-Ratio Calibration (`imgBounds` lock)** |
 | **Inspection Ergonomics** | Fixed static image viewer | **Clinical Optical Zoom (100%–300%) with Drag-to-Pan & Mouse Wheel Zoom** |
-| **Dual User Personas** | Monolithic, jargon-heavy interface | **One-click toggle: Doctor Clinical Console ↔ ASHA Rural Pictogram Counselor** |
+| **Dual User Personas** | Monolithic, jargon-heavy interface | **One-click toggle: Doctor Clinical Console ↔ Community Worker Pictogram Counselor** |
 | **Multilingual Support** | English only | **Full Vernacular Hindi & English with localized audio/pictogram guidance** |
 | **Out-of-Distribution Safety** | Hallucinates predictions on non-retinal images | **Multistage IQA & Chromatic OOD Gatekeeper (Structured 415/200 rejection)** |
-| **Deployment Footprint** | Cloud-dependent, high latency | **Dual Mode: Offline Local Execution (0.3s) or Cloud Web Service via Render/HuggingFace** |
+| **Deployment Footprint** | Cloud-dependent, high latency | **Offline-First Local Execution (<0.3s latency) with zero external API dependencies** |
 
 ---
 
 ## 👥 Dual-Persona Workstation Architecture
 
-RetinaScan-XAI bridges the gap between tertiary vitreoretinal specialists and rural grassroots healthcare workers through dedicated clinical views:
+RetinaScan-XAI bridges the gap between tertiary vitreoretinal specialists and grassroots healthcare workers through dedicated clinical views:
 
 ### 1. Doctor & Ophthalmologist Clinical Console
 * **ICDR 5-Grade Staging:** Displays calibrated multi-class probability distributions across Grade 0 (No DR) through Grade 4 (Proliferative DR).
@@ -74,10 +72,10 @@ RetinaScan-XAI bridges the gap between tertiary vitreoretinal specialists and ru
 * **Clinical Export:** One-click generation of formalized DICOM-style triage reports and printable specialist referral letters.
 
 ### 2. ASHA & Community Health Worker Counseling Portal
-* **Vernacular Communication:** Accessible in **Hindi** and **English**, transforming complex terminology into culturally accessible language.
-* **Pictographic Patient Slips:** Clear visual indicators (traffic-light urgency badges, eye pictograms) for rural patients with low literacy.
+* **Vernacular Communication:** Accessible in **Hindi** and **English**, transforming complex medical terminology into culturally accessible language.
+* **Pictographic Patient Slips:** Clear visual indicators (traffic-light urgency badges, eye pictograms) for patients with low literacy.
 * **Standardized Clinical Scripts:** Evidence-based talking points covering glycemic management, blood pressure targets, and laser follow-up urgency.
-* **Dietary & Lifestyle Guidance:** Culturally tailored recommendations for diabetic diet management in Indian rural communities.
+* **Dietary & Lifestyle Guidance:** Culturally tailored recommendations for diabetic diet and nutrition management.
 
 ---
 
@@ -140,10 +138,10 @@ $$d = \sqrt{(x - x_{\text{fovea}})^2 + (y - y_{\text{fovea}})^2} \times 150\,\mu
 ## 📐 Optical Geometry & Aspect-Ratio Letterbox Calibration
 
 Different fundus cameras output different aspect ratios:
-* **Square Scans:** $1050 \times 1050$ (1:1, e.g. Priya Sharma).
-* **Rectangular Sensor Scans:** $1600 \times 1062$ (1.51:1, e.g. Geeta Sharma & APTOS camera sensors).
+* **Square Scans:** $1050 \times 1050$ (1:1 aspect ratio).
+* **Rectangular Sensor Scans:** $1600 \times 1062$ (1.51:1 aspect ratio).
 
-In standard web applications, rendering rectangular images with `object-fit: cover` inside a circular aperture crops 34% of the image horizontally, slicing off the optic disc and nasal quadrants.
+In standard web viewers, rendering rectangular images with `object-fit: cover` inside a circular aperture crops 34% of the image horizontally, slicing off the optic disc and nasal quadrants.
 
 **The RetinaScan-XAI Fix:**
 Both [Results.jsx](file:///d:/AntiGravity%20projects/MP-RetinascanXAI/Frontend/retinascan-app/src/components/Results.jsx) and [Canvas.jsx](file:///d:/AntiGravity%20projects/MP-RetinascanXAI/Frontend/retinascan-app/src/components/Canvas.jsx) dynamically compute calibrated letterbox bounds (`imgBounds` memo) upon reading image natural dimensions:
@@ -213,8 +211,8 @@ Powered by **`retinascan_resnet50_v2.pth`**, fine-tuned across **4,324 multi-cen
 
 | Clinical Metric | Model v2 (Multi-Center Held-Out) | Target Benchmark | Clinical Impact | Status |
 | :--- | :---: | :---: | :--- | :---: |
-| **Sensitivity (Referable DR: Grade ≥ 2)** | **93.3%** (`0.9332`) | $\ge 90.0\%$ | Detects 363 out of 389 positive cases | ✅ Exceeds Target |
-| **Specificity (Referable DR)** | **86.2%** (`0.8615`) | $\ge 85.0\%$ | Clears 597 out of 693 non-referable cases | ✅ Exceeds Target |
+| **Sensitivity (Referable DR: Grade ≥ 2)** | **93.3%** (`0.9332`) | $\ge 90.0\%$ | Detects 363 out of 389 positive cases | ✅ Exceeds Benchmark |
+| **Specificity (Referable DR)** | **86.2%** (`0.8615`) | $\ge 85.0\%$ | Clears 597 out of 693 non-referable cases | ✅ Exceeds Benchmark |
 | **AUC-ROC** | **0.9702** | $\ge 0.950$ | High discriminatory power across fundus camera types | ✅ Gold Standard |
 | **Negative Predictive Value (NPV)** | **95.8%** (`0.9583`) | — | High rule-out safety for community screening | ✅ High Safety |
 | **Positive Predictive Value (PPV)** | **79.1%** (`0.7908`) | — | Reliable specialist referral prioritization | ✅ Calibrated |
@@ -242,7 +240,6 @@ MP-RetinascanXAI/
 │   ├── counterfactual.py                   # In-silico laser ablation, Telea inpainting, causal ΔP engine
 │   ├── etdrs.py                            # ETDRS 9-zone macular grid calculator & CSME risk engine
 │   ├── segment.py                          # Morphological lesion segmentation, vessel subtraction, disc mask
-│   ├── retinascan_resnet50.pth             # Local PyTorch weights (281.5 MB, gitignored)
 │   └── requirements.txt                    # Python dependencies
 │
 ├── Frontend/
@@ -284,33 +281,40 @@ MP-RetinascanXAI/
 
 ---
 
-## 🚀 Quickstart & Demo Execution (2 Clicks)
+## 🚀 Installation & Getting Started
 
-For presentations, college vivas, and hackathons, running locally on your laptop guarantees **instant response times (<0.3s), full 16GB+ RAM capacity, and zero reliance on venue Wi-Fi**.
+### Prerequisites
+* **Python:** 3.10 or higher
+* **Node.js:** 18.0 or higher
+* **Package Managers:** `pip` and `npm`
 
-### Method 1: One-Click Windows Launchers
-1. Double-click **[`start_backend.bat`](file:///d:/AntiGravity%20projects/MP-RetinascanXAI/start_backend.bat)** → Starts FastAPI on `http://localhost:8000`.
-2. Double-click **[`start_frontend.bat`](file:///d:/AntiGravity%20projects/MP-RetinascanXAI/start_frontend.bat)** → Starts Vite and opens your browser at `http://localhost:5173`.
-
-### Method 2: Manual Terminal Execution
+### 1. Clone the Repository
 ```bash
-# Terminal 1 — Backend
+git clone https://github.com/Piyush-777999/MP-RetinascanXAI.git
+cd MP-RetinascanXAI
+```
+
+### 2. Backend Setup (FastAPI & PyTorch)
+```bash
 cd Backend
 pip install -r requirements.txt
 python main.py
+```
+> The API server will be available at `http://localhost:8000` (interactive Swagger API documentation at `http://localhost:8000/docs`).
 
-# Terminal 2 — Frontend
+### 3. Frontend Setup (React & Vite)
+In a second terminal window:
+```bash
 cd Frontend/retinascan-app
 npm install
 npm run dev
 ```
+> The workstation web interface will launch at `http://localhost:5173`.
 
-### Instant Mobile / Public Tunnel for Demos
-If an evaluator wants to open the app on their phone or tablet during your presentation, run:
-```bash
-npx localtunnel --port 5173
-```
-This generates an instant public HTTPS URL that forwards directly to your laptop while using your laptop's GPU/CPU for inference.
+### Windows Quick-Launch (Optional)
+On Windows systems, you can also launch both services using the provided batch scripts:
+* Double-click **`start_backend.bat`** to start the backend.
+* Double-click **`start_frontend.bat`** to start the frontend.
 
 ---
 
@@ -383,7 +387,7 @@ Simulates laser ablation on targeted lesions, re-runs ResNet-50 inference, and c
 
 ## 🛡️ Ethical, Privacy & Clinical Safeguards
 
-1. **Intended Use:** RetinaScan-XAI is an **Adjunctive Clinical Decision Support System (CDSS)** engineered for preliminary triage in community screening camps. It does not replace formal slit-lamp biomicroscopy by a certified ophthalmologist.
+1. **Intended Use:** RetinaScan-XAI is an **Adjunctive Clinical Decision Support System (CDSS)** engineered for preliminary triage in community screening programs. It does not replace formal slit-lamp biomicroscopy by a certified ophthalmologist.
 2. **Out-of-Distribution Fail-Safe:** The system immediately rejects non-fundus photographs, blurry images, and non-medical graphics, returning structured error alerts rather than hallucinated diagnoses.
 3. **Data Sovereignty & Privacy:** The application operates completely offline. No patient retinal photographs or Protected Health Information (PHI) leave the local clinic premises.
 

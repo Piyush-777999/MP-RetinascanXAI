@@ -17,7 +17,7 @@ export default function Footer() {
             <span className="material-symbols-outlined text-[14px] text-[#0B5563]">verified_user</span>
             HIPAA · Offline-First
           </span>
-          <span>SIH 2026 · MathWorks Track · Prototype only</span>
+          <span>Point-of-Care Clinical Decision Support · Research Prototype</span>
         </div>
       </div>
     </footer>

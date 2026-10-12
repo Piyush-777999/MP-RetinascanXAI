@@ -36,7 +36,7 @@ export default function Header({ screen, navigate }) {
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', lineHeight: 1.1 }}>
             <span style={{ fontSize: 15, fontWeight: 700, color: '#f0f6ff', letterSpacing: '-0.01em', fontFamily: 'Manrope, sans-serif' }}>RetinaScan XAI</span>
-            <span style={{ fontSize: 10, color: '#00d4aa', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace' }}>Clinical · SIH 2026</span>
+            <span style={{ fontSize: 10, color: '#00d4aa', fontWeight: 600, letterSpacing: '0.08em', textTransform: 'uppercase', fontFamily: 'JetBrains Mono, monospace' }}>Clinical Edition · v2.0</span>
           </div>
         </div>
 

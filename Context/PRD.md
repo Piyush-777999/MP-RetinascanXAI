@@ -2,7 +2,7 @@
 
 **RetinaScan-XAI: Explainable AI Platform for Diabetic Retinopathy Screening in Rural India**
 
-Problem ID: SIH26038 | Sponsor: MathWorks | Category: Software / MedTech | Version: 1.0
+Focus Area: Clinical Ophthalmology / MedTech | Architecture: Deep Learning & XAI | Version: 2.0
 
 ---
 

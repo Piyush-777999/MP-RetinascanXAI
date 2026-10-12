@@ -1,6 +1,6 @@
 Model file: retinascan_resnet50.pth (281.5 MB)
 Location: Backend/retinascan_resnet50.pth (gitignored — do not commit)
-Source copy: D:\AntiGravity projects\SIH\Demo\SIH26demo\ml_script\retinascan_resnet50.pth
+Weights source: ml_script/retinascan_resnet50_v2.pth (Fine-tuned ResNet-50 v2)
 
-If Backend/retinascan_resnet50.pth is missing, copy it from the source path above.
+If Backend/retinascan_resnet50.pth is missing, copy or symlink from ml_script/.
 Upload to Google Drive and paste the share link here when available.

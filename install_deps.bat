@@ -2,9 +2,8 @@
 chcp 65001 > nul
 SET PYTHONIOENCODING=utf-8
 
-echo ============================================================
 echo  RetinaScan-XAI -- Install All Dependencies
-echo  SIH 2026 . PS38 . P2: Backend Engineer
+echo  Automated Environment Setup (PyTorch, OpenCV, Node)
 echo ============================================================
 echo.
 

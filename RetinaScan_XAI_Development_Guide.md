@@ -1,7 +1,7 @@
 # RetinaScan-XAI — Reviewed Implementation Blueprint
 
-**SIH 2026 · PS38 · MathWorks Sponsored**
-**3-Person Team · 4-Week Build · Zero-Block Parallel Workflow**
+**Explainable AI Clinical Decision Support System**
+**Engineering Blueprint · Modular Architecture · Parallel Workflow**
 
 ---
 

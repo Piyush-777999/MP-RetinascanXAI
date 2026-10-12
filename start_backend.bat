@@ -2,9 +2,8 @@
 chcp 65001 > nul
 SET PYTHONIOENCODING=utf-8
 
-echo ============================================================
 echo  RetinaScan-XAI -- Start Backend Server
-echo  SIH 2026 . PS38 . P2: Backend Engineer
+echo  FastAPI + PyTorch + ResNet-50 XAI Engine
 echo ============================================================
 echo.
 

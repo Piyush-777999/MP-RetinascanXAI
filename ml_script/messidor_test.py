@@ -8,7 +8,7 @@ are not grade annotations (only left/right pairs), this script:
   2. Outputs grade distribution + confidence statistics
   3. Compares output distribution against known Messidor-2 DR prevalence
      (published: ~46.5% referable DR in Messidor-2)
-  4. Saves a cross_dataset_report.json for judges
+  4. Saves a cross_dataset_report.json
 
 USAGE:
     py -3.12 ml_script\\messidor_test.py
@@ -30,7 +30,7 @@ from model import build_model          # noqa: E402
 from preprocess import val_transforms  # noqa: E402
 
 # ── Config ────────────────────────────────────────────────────────────────────
-MESSIDOR_DIR = r"D:\AntiGravity projects\SIH\DataSet\messidor\IMAGES.zip\IMAGES"
+MESSIDOR_DIR = os.environ.get("MESSIDOR_DIR", r"dataset\messidor\IMAGES.zip\IMAGES")
 MODEL_PATH   = os.path.join(os.path.dirname(__file__), "retinascan_resnet50.pth")
 REPORT_JSON  = os.path.join(os.path.dirname(__file__), "cross_dataset_report.json")
 

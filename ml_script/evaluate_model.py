@@ -32,7 +32,7 @@ from model import build_model          # noqa: E402
 from preprocess import val_transforms  # noqa: E402
 
 # ─── Config ───────────────────────────────────────────────────────────────────
-DATASET_ROOT = r"D:\AntiGravity projects\SIH\DataSet\aptos2019-blindness-detection"
+DATASET_ROOT = os.environ.get("DATASET_ROOT", r"dataset\aptos2019-blindness-detection")
 TRAIN_CSV    = os.path.join(DATASET_ROOT, "train.csv")
 TRAIN_DIR    = os.path.join(DATASET_ROOT, "train_images")
 MODEL_PATH   = os.path.join(os.path.dirname(__file__), "retinascan_resnet50.pth")
@@ -169,7 +169,7 @@ def main():
     spec_ok = specificity >= 0.85
 
     print("─" * 65)
-    print("  SIH 2026 TARGETS:")
+    print("  CLINICAL BENCHMARK TARGETS:")
     print(f"  ✅ Sensitivity ≥ 90% : {'PASS ✅' if sens_ok else 'FAIL ❌'} ({sensitivity*100:.1f}%)")
     print(f"  ✅ Specificity ≥ 85% : {'PASS ✅' if spec_ok else 'FAIL ❌'} ({specificity*100:.1f}%)")
     print("=" * 65)
@@ -198,7 +198,7 @@ def main():
                 "false_negative": int(fn),
             }
         },
-        "sih_targets_met": {
+        "benchmark_targets_met": {
             "sensitivity_90_percent": bool(sens_ok),
             "specificity_85_percent": bool(spec_ok),
         },

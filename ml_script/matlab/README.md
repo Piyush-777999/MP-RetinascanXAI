@@ -1,12 +1,12 @@
 # MATLAB Toolkit — Quick Start Guide
-## RetinaScan-XAI, SIH 2026
+## RetinaScan-XAI Clinical Image Processing Modules
 
 ---
 
 ## Step 1 — Open MATLAB
 
 1. Go to **https://matlab.mathworks.com**
-2. Sign in with your **Walchand college email**
+2. Sign in with your MathWorks account
 3. Once logged in, click **"Open MATLAB Online"**
 
 ---
@@ -62,7 +62,7 @@ This creates a professional PDF report. The PDF opens automatically.
 | `segment_lesions.m`   | Image Processing Toolbox         |
 | `generate_report.m`   | Report Generator Toolbox         |
 
-All three should be included in your Walchand campus license.
+All three toolboxes are standard MathWorks Image Processing & Reporting suites.
 
 ---
 
@@ -76,9 +76,9 @@ All three should be included in your Walchand campus license.
 [MATLAB] generate_report.m    →  PDF screening report
 ```
 
-For the SIH demo, you can show:
+To demonstrate the integration:
 1. Run `preprocess_retina` in MATLAB → show the enhancement
 2. Switch to browser → upload the same image → show Python results
 3. Run `generate_report` in MATLAB → show the PDF
 
-That demonstrates the FULL MathWorks toolkit integration!
+Demonstrates MATLAB and Python cross-platform interoperability.

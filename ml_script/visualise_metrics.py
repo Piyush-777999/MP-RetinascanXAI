@@ -6,7 +6,7 @@ Generates a publication-quality figure with:
   2. ROC Curve with AUC
   3. Sensitivity / Specificity / PPV / NPV bar chart
   4. Grade distribution donut
-  5. SIH compliance summary table
+  5. Clinical benchmark compliance summary table
   6. Sensitivity & Specificity gauges
 
 Run:  py -3.12 ml_script/visualise_metrics.py
@@ -134,7 +134,7 @@ ax_roc.annotate(f"  Sens {SENS*100:.1f}%\n  Spec {SPEC*100:.1f}%",
 ax_roc.axhline(y=T_SENS, color=EMERALD, linestyle=":", linewidth=1.2, alpha=0.7)
 ax_roc.axvline(x=1 - T_SPEC, color=EMERALD, linestyle=":", linewidth=1.2, alpha=0.7)
 ax_roc.fill_between([0, 1-T_SPEC], [T_SENS, T_SENS], [1, 1],
-                    alpha=0.07, color=EMERALD, label="SIH Target Zone (Sens>=90%, Spec>=85%)")
+                    alpha=0.07, color=EMERALD, label="Clinical Target Zone (Sens>=90%, Spec>=85%)")
 
 ax_roc.set_xlim([-0.01, 1.01])
 ax_roc.set_ylim([-0.01, 1.01])
@@ -174,9 +174,9 @@ ax_bar.set_ylim([0, 115])
 ax_bar.set_xticks(x)
 ax_bar.set_xticklabels(metrics, fontsize=9, color=SLATE)
 ax_bar.set_ylabel("Score (%)", fontsize=10, color=SLATE)
-ax_bar.set_title("Key Metrics vs SIH 2026 Targets", fontsize=11, fontweight="bold", color=SLATE, pad=12)
+ax_bar.set_title("Key Metrics vs Clinical Benchmark Targets", fontsize=11, fontweight="bold", color=SLATE, pad=12)
 legend_patches = [
-    mpatches.Patch(color=EMERALD, label="Meets SIH Target"),
+    mpatches.Patch(color=EMERALD, label="Meets Benchmark Target"),
     mpatches.Patch(color=TEAL,    label="No specific target"),
 ]
 ax_bar.legend(handles=legend_patches, fontsize=8, loc="lower right", framealpha=0.9)
@@ -234,7 +234,7 @@ card_data = [
 
 ax_card.set_xlim(0, 10)
 ax_card.set_ylim(0, len(card_data) + 1)
-ax_card.text(5, len(card_data) + 0.5, "SIH 2026 Compliance Summary",
+ax_card.text(5, len(card_data) + 0.5, "Clinical Benchmark Compliance Summary",
              ha="center", fontsize=11, fontweight="bold", color=SLATE)
 
 row_bg_colors = ["#f8fafc", "#f1f5f9"]
@@ -295,7 +295,7 @@ draw_gauge(ax_gauge, 0.27, 0.32, 0.22, SENS, T_SENS, "Sensitivity", EMERALD, yof
 draw_gauge(ax_gauge, 0.73, 0.32, 0.22, SPEC, T_SPEC, "Specificity", TEAL,    yoffset=0.3)
 
 ax_gauge.text(0.5, 0.08,
-    f"Both SIH 2026 targets PASSED\n"
+    f"Both Clinical Benchmark targets PASSED\n"
     f"Optimal threshold: {THRESH:.4f} (Youden's J index)\n"
     f"Validation: {TP+TN+FP+FN} images from APTOS 2019",
     ha="center", va="center", fontsize=9, color=SLATE,

@@ -2,7 +2,7 @@
 
 **RetinaScan-XAI: Explainable AI Platform for Diabetic Retinopathy Screening**
 
-Problem ID: SIH26038 | Version: 1.0 | Companion: PRD v1.0
+Engineering Specification | Version: 2.0 | Companion: PRD v2.0
 
 ---
 

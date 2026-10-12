@@ -21,7 +21,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 
 # ── Config (must match train_model.py) ─────────────────────────────────────
-DATASET_ROOT = r"D:\AntiGravity projects\SIH\DataSet\aptos2019-blindness-detection"
+DATASET_ROOT = os.environ.get("DATASET_ROOT", r"dataset\aptos2019-blindness-detection")
 TRAIN_CSV    = os.path.join(DATASET_ROOT, "train.csv")
 OUTPUT_DIR   = os.path.dirname(os.path.abspath(__file__))
 

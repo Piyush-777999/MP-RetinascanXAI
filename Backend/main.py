@@ -33,7 +33,7 @@ from fastapi.responses import JSONResponse
 app = FastAPI(
     title="RetinaScan-XAI API",
     version="3.0",
-    description="Diabetic Retinopathy Grading + Lesion Segmentation — SIH 2026 PS38",
+    description="Diabetic Retinopathy Grading + Lesion Segmentation & In-Silico Laser Counterfactual XAI",
 )
 
 # ── CORS (allow all for local dev; tighten for production) ─────────────────

@@ -1,6 +1,6 @@
 # RetinaScan-XAI — Work Distribution & 3-Week Implementation Plan
 
-**SIH 2026 · PS38 · 3-Person Team**
+**Engineering Roadmap & Work Distribution**
 
 ---
 
