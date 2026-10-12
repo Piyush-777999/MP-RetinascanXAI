@@ -314,38 +314,6 @@ This generates an instant public HTTPS URL that forwards directly to your laptop
 
 ---
 
-## ☁️ Cloud Deployment Guide (Render & Hugging Face)
-
-### Deploying on Render
-
-#### Step 1: Push Code to GitHub
-```bash
-git add .
-git commit -m "feat: complete deployment readiness"
-git push origin main
-```
-
-#### Step 2: Backend (Render Web Service)
-1. In Render Dashboard, click **New +** → **Web Service**.
-2. Connect your repository.
-3. Configure settings:
-   - **Root Directory:** `Backend`
-   - **Runtime:** `Python 3`
-   - **Build Command:** `pip install -r requirements.txt`
-   - **Start Command:** `uvicorn main:app --host 0.0.0.0 --port $PORT`
-4. Note your backend URL: `https://your-backend.onrender.com`.
-
-#### Step 3: Frontend (Render Static Site)
-1. Click **New +** → **Static Site**.
-2. Configure settings:
-   - **Root Directory:** `Frontend/retinascan-app`
-   - **Build Command:** `npm install && npm run build`
-   - **Publish Directory:** `dist`
-3. In **Environment Variables**, add:
-   - `VITE_API_URL` = `https://your-backend.onrender.com`
-
----
-
 ## 📡 REST API Reference
 
 ### `POST /upload`
