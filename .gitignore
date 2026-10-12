@@ -39,8 +39,9 @@ test_images/
 temp/
 tmp/
 
-# Runtime-generated heatmaps
+# Runtime-generated heatmaps and uploads
 Frontend/retinascan-app/public/images/heatmap_live_*
+Frontend/retinascan-app/public/images/scan_live_*
 
 # Test artifacts
 Frontend/retinascan-app/public/images/test_cam.jpg

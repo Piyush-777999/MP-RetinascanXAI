@@ -8,10 +8,21 @@ import Queue        from './components/Queue.jsx';
 import Canvas       from './components/Canvas.jsx';
 import Referral     from './components/Referral.jsx';
 import Admin        from './components/Admin.jsx';
+import LanguageSwitcher from './components/LanguageSwitcher.jsx';
+import { getT }       from './translations.js';
 import { demoPresets } from './data.js';
+import { API_BASE_URL } from './apiConfig.js';
 
 // All valid screen names
 const SCREENS = ['home','upload','qualitycheck','processing','results','queue','canvas','referral','admin'];
+
+const LEVEL_LABELS = [
+  'No Apparent DR',
+  'Mild NPDR',
+  'Moderate NPDR',
+  'Severe NPDR',
+  'Proliferative DR',
+];
 
 export default function App() {
   const [screen,           setScreen]           = useState('home');
@@ -23,8 +34,11 @@ export default function App() {
   const [allProbs,         setAllProbs]         = useState(null);
   const [lesions,          setLesions]          = useState(demoPresets[2].lesions || []);
   const [lesionSummary,    setLesionSummary]    = useState(demoPresets[2].lesionSummary || null);
-  const [,                 setApiResponse]      = useState(null);
+  const [apiResponse,      setApiResponse]      = useState(null);
   const [uploadError,      setUploadError]      = useState(null);
+  const [appLang,          setAppLang]          = useState(() => localStorage.getItem('retinascan_lang') || 'hi');
+
+  const t = getT(appLang);
 
   // ── Ctrl+Shift+R → demo reset ──────────────────────────────────────────────
   useEffect(() => {
@@ -65,6 +79,8 @@ export default function App() {
     setLesions(p?.lesions || []);
     setLesionSummary(p?.lesionSummary || null);
     setApiResponse(null);
+    // Clear any stale upload-rejection banner when a verified preset is selected
+    setUploadError(null);
   }
 
   const LEVEL_LABELS = [
@@ -73,32 +89,26 @@ export default function App() {
 
   const handleUpload = async (file) => {
     setUploadError(null);
-    setScreen('qualitycheck');
-    const localUrl = URL.createObjectURL(file);
-    setUploadedImageUrl(localUrl);
 
-    const tempPatient = {
-      id: `#DR-${Math.floor(10000 + Math.random() * 90000)}`,
-      name: file.name,
-      fullName: file.name.replace(/\.[^/.]+$/, ''),
-      severity: 2,
-      label: 'Analysing...',
-      confidence: null,
-      age: 55,
-      gender: 'M',
-      village: 'Live Scan Intake',
-    };
-    setPatient(tempPatient);
-    setSelectedEye('od');
-    setHeatmapUrl('');
-    setAllProbs(null);
-    setLesions([]);
-    setLesionSummary(null);
+    // Keep snapshot of current valid state to restore if validation fails
+    const prevPatient          = patient;
+    const prevUploadedImageUrl = uploadedImageUrl;
+    const prevSeverity         = severity;
+    const prevHeatmapUrl       = heatmapUrl;
+    const prevAllProbs         = allProbs;
+    const prevLesions          = lesions;
+    const prevLesionSummary    = lesionSummary;
+    const prevApiResponse      = apiResponse;
+
+    const localUrl = URL.createObjectURL(file);
+
+    // Do NOT commit unverified file to global state yet; only set screen to qualitycheck
+    setScreen('qualitycheck');
 
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const response = await fetch('http://localhost:8000/upload', {
+      const response = await fetch(`${API_BASE_URL}/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -108,21 +118,31 @@ export default function App() {
       }
 
       const data = await response.json();
-      setApiResponse(data);
 
       // Handle explicit OOD validation rejection from backend
       if (data.mode === 'error') {
+        try { URL.revokeObjectURL(localUrl); } catch (e) {}
         setUploadError(data.error || 'Scan validation failed: Not an ocular fundus scan.');
+        // Revert cleanly to last valid patient state
+        setUploadedImageUrl(prevUploadedImageUrl);
+        setPatient(prevPatient);
+        setSeverity(prevSeverity);
+        setHeatmapUrl(prevHeatmapUrl);
+        setAllProbs(prevAllProbs);
+        setLesions(prevLesions);
+        setLesionSummary(prevLesionSummary);
+        setApiResponse(prevApiResponse);
         setScreen('upload');
         return;
       }
 
-      // Normal successful response handling
+      // ONLY ON SUCCESS: Commit the new patient & retinal scan into active state
+      setApiResponse(data);
+      setUploadedImageUrl(localUrl);
       const realSev = typeof data.severity === 'number' ? data.severity : 2;
       setSeverity(realSev);
       setHeatmapUrl(data.heatmap_url || '');
 
-      // Consume real data, safely defaulting if missing (P2 still implementing)
       const realProbs = Array.isArray(data.all_probs) ? data.all_probs : null;
       const realLesions = Array.isArray(data.lesions) ? data.lesions : [];
       const realSummary = data.lesion_summary || null;
@@ -132,27 +152,48 @@ export default function App() {
       setLesionSummary(realSummary);
 
       setPatient({
-        ...tempPatient,
+        id: `#DR-${Math.floor(10000 + Math.random() * 90000)}`,
+        name: file.name,
+        fullName: file.name.replace(/\.[^/.]+$/, ''),
+        age: 55,
+        gender: 'M',
+        village: 'Live Scan Intake',
         severity: realSev,
         label: data.label || LEVEL_LABELS[realSev] || `Grade ${realSev}`,
         confidence: data.confidence != null ? data.confidence : null,
         action: data.action || '',
         mode: data.mode || 'real',
+        imageUrl: localUrl,
+        serverImageUrl: data.image_url || '',
         heatmap_url: data.heatmap_url || '',
         all_probs: realProbs,
         lesions: realLesions,
         lesion_summary: realSummary,
+        etdrs_profile: data.etdrs_profile || null,
       });
     } catch (err) {
       console.error('Backend upload request failed:', err);
-      setUploadError('Backend connection error: Unable to reach the API server on http://localhost:8000.');
+      try { URL.revokeObjectURL(localUrl); } catch (e) {}
+      const msg = err.message?.includes('HTTP')
+        ? `Server error: ${err.message}`
+        : 'Scan validation failed: Unable to process file as an ocular fundus scan. Please ensure the image is a valid retinal photograph.';
+      setUploadError(msg);
+      // Revert cleanly to last valid patient state
+      setUploadedImageUrl(prevUploadedImageUrl);
+      setPatient(prevPatient);
+      setSeverity(prevSeverity);
+      setHeatmapUrl(prevHeatmapUrl);
+      setAllProbs(prevAllProbs);
+      setLesions(prevLesions);
+      setLesionSummary(prevLesionSummary);
+      setApiResponse(prevApiResponse);
       setScreen('upload');
     }
   };
 
   // ── Screens that own their entire viewport ───────────────────────────────
   if (screen === 'home')         return <Home navigate={navigate} />;
-  if (screen === 'qualitycheck') return <QualityCheck navigate={navigate} />;
+  if (screen === 'qualitycheck') return <QualityCheck navigate={navigate} patient={patient} />;
   if (screen === 'processing')   return <Processing navigate={navigate} patient={patient} />;
   if (screen === 'admin')        return <Admin navigate={navigate} />;
 
@@ -195,11 +236,11 @@ export default function App() {
         {/* Nav steps */}
         <div style={{ display: 'flex', gap: 6, background: '#f1f5f9', padding: '3px 4px', borderRadius: 10, border: '1px solid #e2e8f0' }}>
           {[
-            { key: 'upload',   label: 'Patient Intake' },
-            { key: 'results',  label: 'Diagnostic Results' },
-            { key: 'queue',    label: 'Triage Queue' },
-            { key: 'canvas',   label: 'PACS Canvas' },
-            { key: 'referral', label: 'Referral Slip' },
+            { key: 'upload',   label: t.navIntake },
+            { key: 'results',  label: t.navResults },
+            { key: 'queue',    label: t.navQueue },
+            { key: 'canvas',   label: t.navCanvas },
+            { key: 'referral', label: t.navReferral },
           ].map(({ key, label }) => (
             <button key={key} onClick={() => navigate(key)} style={{
               all: 'unset', cursor: 'pointer',
@@ -214,26 +255,36 @@ export default function App() {
           ))}
         </div>
 
-        {/* Right: patient quick-info if set */}
-        {patient?.name && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12 }}>
-            <div style={{ textAlign: 'right' }}>
-              <div style={{ color: '#0f172a', fontWeight: 600 }}>{patient.fullName || patient.name}</div>
-              <div style={{ color: '#64748b', fontFamily: 'JetBrains Mono, monospace', fontSize: 10 }}>{patient.id}</div>
+        {/* Right Corner: Always-Present Language Switcher & Patient Quick-Info */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+          <LanguageSwitcher
+            currentLang={appLang}
+            onChangeLang={code => {
+              setAppLang(code);
+              localStorage.setItem('retinascan_lang', code);
+            }}
+          />
+
+          {patient?.name && (
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12 }}>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ color: '#0f172a', fontWeight: 600 }}>{patient.fullName || patient.name}</div>
+                <div style={{ color: '#64748b', fontFamily: 'JetBrains Mono, monospace', fontSize: 10 }}>{patient.id}</div>
+              </div>
+              {patient.severity != null && (
+                <span style={{
+                  padding: '4px 11px', borderRadius: 20,
+                  background: ['#dcfce7','#fef3c7','#ffedd5','#fee2e2','#fef2f2'][patient.severity] || '#f1f5f9',
+                  border: `1px solid ${['#bbf7d0','#fde68a','#fed7aa','#fecaca','#fca5a5'][patient.severity] || '#e2e8f0'}`,
+                  color: ['#15803d','#b45309','#c2410c','#b91c1c','#991b1b'][patient.severity] || '#475569',
+                  fontSize: 11, fontWeight: 700,
+                }}>
+                  Level {patient.severity}
+                </span>
+              )}
             </div>
-            {patient.severity != null && (
-              <span style={{
-                padding: '4px 11px', borderRadius: 20,
-                background: ['#dcfce7','#fef3c7','#ffedd5','#fee2e2','#fef2f2'][patient.severity] || '#f1f5f9',
-                border: `1px solid ${['#bbf7d0','#fde68a','#fed7aa','#fecaca','#fca5a5'][patient.severity] || '#e2e8f0'}`,
-                color: ['#15803d','#b45309','#c2410c','#b91c1c','#991b1b'][patient.severity] || '#475569',
-                fontSize: 11, fontWeight: 700,
-              }}>
-                Level {patient.severity}
-              </span>
-            )}
-          </div>
-        )}
+          )}
+        </div>
       </nav>
 
       {/* Screen content */}
@@ -259,7 +310,12 @@ export default function App() {
             allProbs={allProbs}
             lesions={lesions}
             lesionSummary={lesionSummary}
+            etdrsProfile={patient?.etdrs_profile || apiResponse?.etdrs_profile}
             onQueue={() => navigate('queue')}
+            currentAppLang={appLang}
+            uploadError={uploadError}
+            clearUploadError={() => setUploadError(null)}
+            apiResponse={apiResponse}
           />
         )}
         {screen === 'queue' && (
@@ -292,6 +348,7 @@ export default function App() {
             patient={patient}
             severity={severity}
             selectedEye={selectedEye}
+            currentAppLang={appLang}
           />
         )}
       </div>

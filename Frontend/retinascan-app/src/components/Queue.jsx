@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { demoPresets } from '../data.js';
 
 const SEV_CONFIG = {
   0: { label: 'Grade 0: No DR',        color: '#15803d', bg: '#dcfce7', border: '#bbf7d0', action: 'Annual screening recall' },
@@ -26,9 +27,20 @@ export default function Queue({ navigate, patient, severity = 2, selectedEye = '
 
   const queuePatients = [
     currentPatient,
-    { id: 'DR-88220', name: 'Ram Kishore', age: 64, gender: 'M', location: 'Kishangarh Sub-Center', sev: 0, conf: '98.7%', eye: 'OU', status: 'Routine Complete' },
-    { id: 'DR-88221', name: 'Fatima Dawood', age: 49, gender: 'F', location: 'Behror Primary Center', sev: 1, conf: '89.1%', eye: 'OD', status: 'Scheduled Review' },
-    { id: 'DR-88225', name: 'Harish Chandra', age: 61, gender: 'M', location: 'Thanagazi Camp', sev: 3, conf: '94.8%', eye: 'OS', status: 'Needs Referral' },
+    // Pull the other 3 demo patients (skip the currently active one to avoid duplicate ID)
+    ...demoPresets
+      .filter(p => p.id !== currentPatient.id)
+      .map(p => ({
+        id: p.id.replace('#', ''),
+        name: p.fullName || p.name,
+        age: p.age,
+        gender: p.gender,
+        location: p.village,
+        sev: p.severity,
+        conf: `${p.confidence}%`,
+        eye: 'OD',
+        status: p.severity >= 2 ? 'Needs Referral' : 'Routine Complete',
+      })),
   ];
 
   const filteredPatients = queuePatients.filter(p => {
