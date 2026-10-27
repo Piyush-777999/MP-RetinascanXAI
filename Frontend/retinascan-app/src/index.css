@@ -1,107 +1,441 @@
-/* RetinaScan XAI — Clinical Hospital Light Theme */
+/* RetinaScan XAI — Earthbound Biotech Theme */
 @import "tailwindcss";
+@import "tw-animate-css";
+
+@theme inline {
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-muted-2: var(--muted-2);
+  --color-muted-2-foreground: var(--muted-2-foreground);
+  --color-transparent: transparent;
+  --radius-xs: calc(var(--radius) - 4px);
+  --breakpoint-sm: 640px;
+  --breakpoint-md: 768px;
+  --breakpoint-lg: 1024px;
+  --breakpoint-xl: 1280px;
+  --breakpoint-2xl: 1400px;
+  --animate-accordion-down: accordion-down 0.2s ease-out;
+  --animate-accordion-up: accordion-up 0.2s ease-out;
+  --animate-fade-in-out: fade-in-out 4s ease-in-out;
+  --animate-fade-in: fade-in 0.7s ease-out forwards;
+  --animate-progress: progress 8s linear;
+  --animate-infinite-slider: infiniteSlider 20s linear infinite;
+  --animate-infinite-slider-reverse: infiniteSliderReverse 20s linear infinite;
+  --animate-shadow-ping: shadow-ping 1.5s ease-in-out infinite;
+  --animate-flip-btn: flip-btn 6s infinite steps(2, end);
+  --animate-rotate-btn: rotate-btn 3s linear infinite both;
+  --animate-light-to-right-top: light-to-right 4s linear infinite;
+  --animate-light-to-right-bottom: light-to-right 4s linear infinite;
+  --animate-marquee: marquee 25s linear infinite;
+  --animate-slide-to-right: slide-to-right 3s linear infinite;
+  --animate-slide-to-top: slide-to-top 3s linear infinite;
+  --animate-shimmer-slide: shimmer-slide var(--speed) ease-in-out infinite alternate;
+  --animate-spin-around: spin-around calc(var(--speed) * 2) infinite linear;
+  --animate-shine: shine var(--duration) infinite linear;
+  --animate-border-beam: border-beam calc(var(--duration)*1s) infinite linear;
+  --font-sans: var(--font-sans);
+  --font-serif: var(--font-serif);
+  --font-mono: var(--font-mono);
+  --font-cursive: var(--font-cursive);
+  --font-playfair: "Playfair Display", serif;
+  --font-caveat: "Caveat", cursive;
+}
 
 :root {
-  --bg-base: #f8fafc;
+  --background: hsl(0 0% 100%);
+  --foreground: hsl(0 0% 3.9%);
+  --card: hsl(0 0% 100%);
+  --card-foreground: hsl(0 0% 3.9%);
+  --popover: hsl(0 0% 100%);
+  --popover-foreground: hsl(0 0% 3.9%);
+  --primary: hsl(0 0% 9%);
+  --primary-foreground: hsl(0 0% 98%);
+  --secondary: hsl(0 0% 96%);
+  --secondary-foreground: hsl(0 0% 9%);
+  --muted: hsl(0 0% 96%);
+  --muted-foreground: hsl(0 0% 45.1%);
+  --accent: hsl(0 0% 96%);
+  --accent-foreground: hsl(0 0% 9%);
+  --destructive: hsl(0 84.2% 60.2%);
+  --destructive-foreground: hsl(0 0% 98%);
+  --border: hsl(0, 0%, 90%);
+  --input: hsl(0 0% 89.8%);
+  --ring: hsl(0 0% 3.9%);
+  --radius: 8px;
+  --chart-1: hsl(12 76% 61%);
+  --chart-2: hsl(173 58% 39%);
+  --chart-3: hsl(197 37% 24%);
+  --chart-4: hsl(43 74% 66%);
+  --chart-5: hsl(27 87% 67%);
+  --sidebar: hsl(0 0% 98%);
+  --sidebar-foreground: hsl(240 5.3% 26.1%);
+  --sidebar-primary: hsl(240 5.9% 10%);
+  --sidebar-primary-foreground: hsl(0 0% 98%);
+  --sidebar-accent: hsl(240 4.8% 95.9%);
+  --sidebar-accent-foreground: hsl(240 5.9% 10%);
+  --sidebar-border: hsl(220 13% 91%);
+  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+  --muted-2: hsl(0 0% 90%);
+  --muted-2-foreground: hsl(240 3.8% 46.1%);
+  --gradient-1: hsl(227 81% 67%);
+  --gradient-2: hsl(125 51% 53%);
+  --gradient-3: hsl(318 58% 66%);
+  --font-sans: "Inter", sans-serif;
+  --font-serif: "Roboto Serif", serif;
+  --font-mono: "Roboto Mono", monospace;
+  --font-cursive: "Caveat", cursive;
+
+  /* ── Earthbound Biotech Palette ─────────────────────────────────────── */
+  --olive-deep:  #4C3D12;
+  --ivory:       #F4F4E9;
+  --sage:        #7D8960;
+  --forest:      #25351A;
+  --celery:      #E3EBC9;
+  --gray-green:  #D0D4C2;
+  --ink:         #171812;
+  --ink-muted:   #858575;
+
+  /* Severity color bands */
+  --sev-0-color: #7D8960;   /* sage — No DR */
+  --sev-1-color: #A8A050;   /* olive-gold — Mild */
+  --sev-2-color: #B8863B;   /* ochre — Moderate */
+  --sev-3-color: #A6552E;   /* burnt sienna — Severe */
+  --sev-4-color: #7A2E22;   /* deep brick — Proliferative */
+
+  /* Hairline & radius */
+  --hairline: 1px solid rgba(76,61,18,0.15);
+  --eb-radius: 6px;
+  --eb-radius-lg: 10px;
+
+  /* Typography */
+  --eb-font: 'Inter', system-ui, -apple-system, sans-serif;
+
+  /* Legacy / shadcn compat tokens */
+  --bg-base: var(--ivory);
   --bg-surface: #ffffff;
   --bg-card: #ffffff;
-  --border-card: #e2e8f0;
-  --border-subtle: #edf2f7;
-  --blue-primary: #0284c7;
-  --blue-hover: #0369a1;
-  --blue-light: #f0f9ff;
-  --blue-glow: rgba(2, 132, 199, 0.12);
-  --teal: #0d9488;
-  --text-primary: #0f172a;
-  --text-secondary: #475569;
-  --text-muted: #64748b;
-  --text-dim: #94a3b8;
+  --border-card: var(--gray-green);
+  --border-subtle: var(--celery);
+  --text-primary: var(--ink);
+  --text-secondary: var(--ink-muted);
+  --text-muted: var(--ink-muted);
+  --text-dim: var(--gray-green);
+}
+
+.dark {
+  --background: hsl(240 10% 3.9%);
+  --foreground: hsl(0 0% 98%);
+  --card: hsl(240 10% 3.9%);
+  --card-foreground: hsl(0 0% 98%);
+  --popover: hsl(240 10% 3.9%);
+  --popover-foreground: hsl(0 0% 98%);
+  --primary: hsl(0 0% 98%);
+  --primary-foreground: hsl(240 5.9% 10%);
+  --secondary: hsl(240 3.7% 15.9%);
+  --secondary-foreground: hsl(0 0% 98%);
+  --muted: hsl(240 3.7% 15.9%);
+  --muted-foreground: hsl(240 5% 64.9%);
+  --accent: hsl(240 3.7% 15.9%);
+  --accent-foreground: hsl(0 0% 98%);
+  --destructive: hsl(0 62.8% 30.6%);
+  --destructive-foreground: hsl(0 0% 98%);
+  --border: hsl(240 3.7% 15.9%);
+  --input: hsl(240 3.7% 15.9%);
+  --ring: hsl(240 4.9% 83.9%);
+  --chart-1: hsl(220 70% 50%);
+  --chart-2: hsl(160 60% 45%);
+  --chart-3: hsl(30 80% 55%);
+  --chart-4: hsl(280 65% 60%);
+  --chart-5: hsl(340 75% 55%);
+  --sidebar: hsl(240 5.9% 10%);
+  --sidebar-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-primary: hsl(224.3 76.3% 48%);
+  --sidebar-primary-foreground: hsl(0 0% 100%);
+  --sidebar-accent: hsl(240 3.7% 15.9%);
+  --sidebar-accent-foreground: hsl(240 4.8% 95.9%);
+  --sidebar-border: hsl(240 3.7% 15.9%);
+  --sidebar-ring: hsl(217.2 91.2% 59.8%);
+  --muted-2: hsl(0, 0%, 18%);
+  --muted-2-foreground: hsl(240, 2%, 75%);
+  --gradient-1: hsl(240 77% 25%);
+  --gradient-2: hsl(125 51% 53%);
+  --gradient-3: hsl(318 58% 66%);
+}
+
+@keyframes border-beam {
+  100% {
+    offset-distance: 100%;
+  }
+}
+
+@keyframes accordion-down {
+  from {
+    height: 0;
+  }
+  to {
+    height: var(--radix-accordion-content-height);
+  }
+}
+
+@keyframes accordion-up {
+  from {
+    height: var(--radix-accordion-content-height);
+  }
+  to {
+    height: 0;
+  }
+}
+
+@keyframes fade-in-out {
+  0% {
+    opacity: 0;
+  }
+  20% {
+    opacity: 1;
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@keyframes progress {
+  from {
+    width: 0%;
+  }
+  to {
+    width: 100%;
+  }
+}
+
+@keyframes infiniteSlider {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(calc(-250px * 5));
+  }
+}
+
+@keyframes infiniteSliderReverse {
+  0% {
+    transform: translateX(calc(-250px * 5));
+  }
+  100% {
+    transform: translateX(0);
+  }
+}
+
+@keyframes fade-in-scale {
+  0% {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes transform1 {
+  0%, 25%, 100% { width: 100%; padding-bottom: 120%; }
+  33.33%, 58.33% { width: 0%; padding-bottom: 0%; }
+  66.66%, 91.66% { width: 90%; padding-bottom: 100%; }
+}
+
+@keyframes transform2 {
+  0%, 25%, 100% { width: 65%; padding-bottom: 65%; }
+  33.33%, 58.33% { width: 95%; padding-bottom: 114%; }
+  66.66%, 91.66% { width: 52%; padding-bottom: 52%; }
+}
+
+@keyframes transform3 {
+  0%, 25%, 100% { width: 78%; padding-bottom: 100%; }
+  33.33%, 58.33% { width: 78%; padding-bottom: 94%; }
+  66.66%, 91.66% { width: 95%; padding-bottom: 76%; }
+}
+
+@keyframes transform4 {
+  0%, 25%, 66.66%, 91.66%, 100% { width: 0%; padding-bottom: 0%; }
+  33.33%, 58.33% { width: 65%; padding-bottom: 46%; }
+}
+
+@keyframes gradient-spin {
+  0% { transform: translateX(-50%) translateY(-50%) rotate(0deg); }
+  100% { transform: translateX(-50%) translateY(-50%) rotate(360deg); }
+}
+
+@keyframes shadow-ping {
+  0% { box-shadow: 0 0 0 0px #f5f5f5; }
+  50% { box-shadow: 0 0 0 12px #d4d4d4; }
+  100% { box-shadow: 0 0 0 12px transparent; }
+}
+
+@keyframes flip-btn {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes rotate-btn {
+  to { transform: rotate(90deg); }
+}
+
+@keyframes slide-to-right {
+  0% { opacity: 0; left: 0; }
+  50% { opacity: 1; }
+  100% { opacity: 0; left: 80%; }
+}
+
+@keyframes slide-to-top {
+  0% { opacity: 0; bottom: 0; }
+  50% { opacity: 1; }
+  100% { opacity: 0; bottom: 80%; }
+}
+
+@keyframes light-to-right {
+  0% { transform: translate(0%); opacity: 0; }
+  50% { opacity: 1; }
+  100% { transform: translate(100%); opacity: 0; }
+}
+
+@keyframes marquee {
+  0% { transform: translateX(0%); }
+  100% { transform: translateX(-100%); }
+}
+
+@keyframes fade-in {
+  0% { opacity: 0; transform: translateY(20px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shimmer-slide {
+  to { transform: translate(calc(100cqw - 100%), 0); }
+}
+
+@keyframes spin-around {
+  0% { transform: translateZ(0) rotate(0); }
+  15%, 35% { transform: translateZ(0) rotate(90deg); }
+  65%, 85% { transform: translateZ(0) rotate(270deg); }
+  100% { transform: translateZ(0) rotate(360deg); }
+}
+
+@keyframes shine {
+  0% { background-position: 0% 0%; }
+  50% { background-position: 100% 100%; }
+  to { background-position: 0% 0%; }
 }
 
 *, *::before, *::after { box-sizing: border-box; }
 html, body { margin: 0; padding: 0; }
 body {
-  background: var(--bg-base);
-  color: var(--text-primary);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--ivory);
+  color: var(--ink);
+  font-family: var(--eb-font);
   -webkit-font-smoothing: antialiased;
 }
 
-/* Custom subtle scrollbar */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
-  border-radius: 4px;
-}
-::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+/* Custom subtle scrollbar — earthy */
+::-webkit-scrollbar { width: 5px; height: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--gray-green); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: var(--sage); }
+
+/* ── Earthbound Biotech shell ─────────────────────────────────────── */
+.eb-bg {
+  background: var(--ivory);
+  min-height: 100vh;
 }
 
-/* ── Clean clinical background ────────────────────────────────────────────── */
-.dot-grid {
-  background-image: radial-gradient(circle, rgba(15, 23, 42, 0.05) 1px, transparent 1px);
-  background-size: 24px 24px;
-}
-
-/* ── Medical cards ─────────────────────────────────────────────────── */
-.glass {
+/* ── EB Cards ─────────────────────────────────────────────────── */
+.eb-card {
   background: #ffffff;
-  border: 1px solid #e2e8f0;
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.05), 0 1px 2px rgba(15, 23, 42, 0.03);
+  border: var(--hairline);
+  border-radius: var(--eb-radius);
+  box-shadow: 0 1px 4px rgba(23,24,18,0.06);
 }
-.glass-teal {
-  background: #f0fdfa;
-  border: 1px solid #ccfbf1;
+.eb-card-celery {
+  background: var(--celery);
+  border: var(--hairline);
+  border-radius: var(--eb-radius);
 }
-.glass-hover:hover {
-  background: #ffffff;
-  border-color: #cbd5e1;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.06);
+.eb-card:hover, .eb-card-hover:hover {
+  box-shadow: 0 3px 12px rgba(76,61,18,0.10);
 }
 
-/* ── Primary clinical buttons ─────────────────────────────────────────── */
-.btn-teal, .btn-primary {
-  background: #0284c7;
-  color: #ffffff;
+/* ── EB Buttons ────────────────────────────────────────────────── */
+.btn-primary, .btn-teal {
+  background: var(--forest);
+  color: var(--ivory);
   font-weight: 600;
-  border: 1px solid #0284c7;
-  border-radius: 8px;
+  border: 1px solid var(--forest);
+  border-radius: var(--eb-radius);
   cursor: pointer;
-  transition: all 0.15s ease;
-  box-shadow: 0 1px 2px rgba(2, 132, 199, 0.2);
+  transition: all 0.14s ease;
 }
-.btn-teal:hover, .btn-primary:hover {
-  background: #0369a1;
-  border-color: #0369a1;
-  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.25);
+.btn-primary:hover, .btn-teal:hover {
+  background: var(--olive-deep);
+  border-color: var(--olive-deep);
   transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(37,53,26,0.22);
 }
 .btn-ghost {
-  background: #ffffff;
-  border: 1px solid #cbd5e1;
-  color: #334155;
+  background: transparent;
+  border: var(--hairline);
+  color: var(--ink);
   font-weight: 500;
-  border-radius: 8px;
+  border-radius: var(--eb-radius);
   cursor: pointer;
-  transition: all 0.15s ease;
+  transition: all 0.14s ease;
 }
 .btn-ghost:hover {
-  background: #f8fafc;
-  border-color: #94a3b8;
-  color: #0f172a;
+  background: var(--celery);
+  border-color: var(--sage);
 }
 
-/* ── Severity badge colors (Clean Medical Palette) ──────────────────── */
-.sev-0 { color: #15803d; background: #dcfce7; border: 1px solid #bbf7d0; }
-.sev-1 { color: #b45309; background: #fef3c7; border: 1px solid #fde68a; }
-.sev-2 { color: #c2410c; background: #ffedd5; border: 1px solid #fed7aa; }
-.sev-3 { color: #b91c1c; background: #fee2e2; border: 1px solid #fecaca; }
-.sev-4 { color: #991b1b; background: #fef2f2; border: 1px solid #fca5a5; }
+/* ── EB Severity badges ─────────────────────────────────────────── */
+.sev-0 { color: var(--sev-0-color); background: rgba(125,137,96,0.12); border: 1px solid rgba(125,137,96,0.30); }
+.sev-1 { color: var(--sev-1-color); background: rgba(168,160,80,0.12); border: 1px solid rgba(168,160,80,0.30); }
+.sev-2 { color: var(--sev-2-color); background: rgba(184,134,59,0.12); border: 1px solid rgba(184,134,59,0.30); }
+.sev-3 { color: var(--sev-3-color); background: rgba(166,85,46,0.12); border: 1px solid rgba(166,85,46,0.30); }
+.sev-4 { color: var(--sev-4-color); background: rgba(122,46,34,0.12); border: 1px solid rgba(122,46,34,0.30); }
+
+/* ── EB Divider ─────────────────────────────────────────────────── */
+.eb-divider {
+  border: none;
+  border-top: var(--hairline);
+  margin: 0;
+}
+
+/* ── dotted section separator ──────────────────────────────────── */
+.eb-dotted {
+  border: none;
+  border-top: 1px dashed var(--gray-green);
+  margin: 0;
+}
+
+/* ── EB top bar ─────────────────────────────────────────────────── */
+.eb-topbar {
+  position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+  height: 48px;
+  background: var(--forest);
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 0 24px;
+  font-family: var(--eb-font);
+}
+
+/* ── dot-grid grain pattern ─────────────────────────────────────── */
+.dot-grid {
+  background-image: radial-gradient(circle, rgba(76,61,18,0.06) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+@keyframes eb-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.eb-fade-in {
+  animation: eb-fade-in 0.35s ease-out both;
+}
 
 @media print { .no-print { display: none !important; } }

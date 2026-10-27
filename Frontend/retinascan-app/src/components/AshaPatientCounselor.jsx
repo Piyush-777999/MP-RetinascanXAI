@@ -1,7 +1,30 @@
 import React, { useState, useEffect } from 'react';
 import { LANGUAGES, getCounselorContent } from '../counselorData.js';
 
-/* ── Crisp, Professional Vector SVG Icons (21st.dev / Lucide Style) ────────── */
+/* ── Earthbound Biotech Color Tokens ──────────────────────────────────────── */
+const EB = {
+  forest:    '#25351A',
+  forestHover: '#334724',
+  olive:     '#4C3D12',
+  ivory:     '#F4F4E9',
+  cardBg:    '#FFFFFF',
+  sage:      '#7D8960',
+  sageLight: '#E8EBDD',
+  celery:    '#E3EBC9',
+  celeryDark:'#4D6038',
+  border:    '#D6DAC8',
+  ink:       '#171812',
+  inkMuted:  '#5C6450',
+  inkLight:  '#858575',
+  urgentBg:  '#FBE8E8',
+  urgentText:'#881337',
+  urgentBorder:'#F4AAAA',
+  routineBg: '#EAF0E2',
+  routineText:'#1B381B',
+  routineBorder:'#B8CEAA',
+};
+
+/* ── Minimalist Clean Icons ──────────────────────────────────────────────── */
 function IconCalendar({ size = 20, color = 'currentColor' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -49,15 +72,6 @@ function IconCheck({ size = 14, color = 'currentColor' }) {
   );
 }
 
-function IconX({ size = 14, color = 'currentColor' }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-      <line x1="18" y1="6" x2="6" y2="18" />
-      <line x1="6" y1="6" x2="18" y2="18" />
-    </svg>
-  );
-}
-
 function IconPrinter({ size = 16, color = 'currentColor' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -78,10 +92,11 @@ function IconStethoscope({ size = 16, color = 'currentColor' }) {
   );
 }
 
-function IconMessageCircle({ size = 16, color = 'currentColor' }) {
+function IconVolume({ size = 16, color = 'currentColor' }) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+      <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5" />
+      <path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07" />
     </svg>
   );
 }
@@ -96,16 +111,43 @@ export default function AshaPatientCounselor({
 }) {
   const [selectedLang, setSelectedLang] = useState(currentAppLang || 'hi');
   const [showEnglishText, setShowEnglishText] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
   const patientName = patient?.fullName || patient?.name || 'Smt. Geeta Sharma';
   const content = getCounselorContent(selectedLang, patientName, severity, csmeRisk);
 
-  // Sync with global language prop if it changes
   useEffect(() => {
     if (currentAppLang) {
       setSelectedLang(currentAppLang);
     }
   }, [currentAppLang]);
+
+  // Clean speech synthesis
+  const handleToggleSpeak = () => {
+    if (!('speechSynthesis' in window)) return;
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(content.spokenText);
+    const langObj = LANGUAGES.find(l => l.code === selectedLang);
+    if (langObj?.bcp47) utterance.lang = langObj.bcp47;
+    utterance.rate = 0.9;
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+    setIsSpeaking(true);
+  };
+
+  useEffect(() => {
+    return () => {
+      if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+    };
+  }, []);
 
   const isHighCsme = csmeRisk === 'HIGH';
 
@@ -114,68 +156,68 @@ export default function AshaPatientCounselor({
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      background: '#f8fafc',
-      color: '#0f172a',
-      fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
+      background: EB.ivory,
+      color: EB.ink,
+      fontFamily: 'Inter, system-ui, sans-serif',
       overflowY: 'auto',
-      padding: '20px 28px 40px',
+      padding: '16px 22px 32px',
     }}>
-      {/* ── Sub-Navigation & Header Bar ── */}
+
+      {/* ── Top Bar: Clean Action Bar (Decluttered) ── */}
       <div style={{
-        background: '#ffffff',
-        border: '1px solid #e2e8f0',
-        borderRadius: 12,
-        padding: '14px 20px',
-        marginBottom: 16,
+        background: EB.cardBg,
+        border: `1px solid ${EB.border}`,
+        borderRadius: 8,
+        padding: '10px 18px',
+        marginBottom: 14,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: 12,
-        boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
+        gap: 10,
+        boxShadow: '0 1px 3px rgba(37,53,26,0.04)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div style={{
-            width: 36, height: 36, borderRadius: 8,
-            background: '#ecfdf5', border: '1px solid #a7f3d0',
+            width: 32, height: 32, borderRadius: 6,
+            background: EB.forest,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            color: '#047857',
+            color: '#FFFFFF',
           }}>
-            <IconStethoscope size={20} color="#047857" />
+            <IconStethoscope size={16} color="#FFFFFF" />
           </div>
           <div>
             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <h2 style={{ margin: 0, fontSize: 15, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>
-                ASHA & Patient Counseling Hub
+              <h2 style={{ margin: 0, fontSize: 14.5, fontWeight: 700, color: EB.forest, letterSpacing: '-0.01em' }}>
+                ASHA Patient Counseling
               </h2>
               <span style={{
-                background: '#f1f5f9', color: '#475569',
-                fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 4,
-                border: '1px solid #e2e8f0',
+                background: EB.sageLight, color: EB.forest,
+                fontSize: 10.5, fontWeight: 600, padding: '1px 7px', borderRadius: 4,
+                border: `1px solid ${EB.border}`,
               }}>
                 मरीज़ व आशा परामर्श
               </span>
             </div>
-            <div style={{ fontSize: 11.5, color: '#64748b', marginTop: 1 }}>
-              National Health Mission • Primary Eye Care Tele-Screening
-            </div>
           </div>
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button
             onClick={onSwitchToDoctor}
             style={{
               all: 'unset', cursor: 'pointer',
               display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '7px 14px', borderRadius: 8,
-              background: '#f8fafc', border: '1px solid #cbd5e1',
-              color: '#334155', fontSize: 12, fontWeight: 600,
-              transition: 'all 0.15s ease',
+              padding: '6px 12px', borderRadius: 6,
+              background: '#FFFFFF', border: `1px solid ${EB.border}`,
+              color: EB.forest, fontSize: 11.5, fontWeight: 600,
+              transition: 'background 0.12s',
             }}
+            onMouseEnter={e => e.currentTarget.style.background = EB.sageLight}
+            onMouseLeave={e => e.currentTarget.style.background = '#FFFFFF'}
           >
-            <IconStethoscope size={14} color="#64748b" />
-            <span>Doctor Workstation (विशेषज्ञ)</span>
+            <IconStethoscope size={13} color={EB.forest} />
+            <span>Doctor Workstation</span>
           </button>
 
           <button
@@ -183,422 +225,480 @@ export default function AshaPatientCounselor({
             style={{
               all: 'unset', cursor: 'pointer',
               display: 'inline-flex', alignItems: 'center', gap: 6,
-              padding: '7px 16px', borderRadius: 8,
-              background: '#0284c7', color: '#ffffff',
-              fontSize: 12, fontWeight: 600,
-              boxShadow: '0 1px 3px rgba(2,132,199,0.25)',
-              transition: 'all 0.15s ease',
+              padding: '6px 14px', borderRadius: 6,
+              background: EB.forest, color: '#FFFFFF',
+              fontSize: 11.5, fontWeight: 700,
+              boxShadow: '0 1px 3px rgba(37,53,26,0.2)',
+              transition: 'background 0.12s',
             }}
+            onMouseEnter={e => e.currentTarget.style.background = EB.forestHover}
+            onMouseLeave={e => e.currentTarget.style.background = EB.forest}
           >
-            <IconPrinter size={15} color="#ffffff" />
-            <span>Print Patient Handout Slip</span>
+            <IconPrinter size={14} color="#FFFFFF" />
+            <span>Print Patient Slip</span>
           </button>
         </div>
       </div>
 
-      {/* ── Patient Identity & Triage Card ── */}
+      {/* ── Patient Identity & Triage Status Strip (Decluttered) ── */}
       <div style={{
-        background: '#ffffff',
-        border: `1px solid ${isHighCsme ? '#fecaca' : '#bbf7d0'}`,
-        borderLeft: `4px solid ${isHighCsme ? '#dc2626' : '#16a34a'}`,
-        borderRadius: 12,
-        padding: '14px 20px',
-        marginBottom: 16,
+        background: EB.cardBg,
+        border: `1px solid ${EB.border}`,
+        borderRadius: 8,
+        padding: '12px 18px',
+        marginBottom: 14,
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         flexWrap: 'wrap',
-        gap: 14,
-        boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+        gap: 12,
+        boxShadow: '0 1px 3px rgba(37,53,26,0.03)',
       }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
-          {/* Avatar Initials */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <div style={{
-            width: 42, height: 42, borderRadius: 10,
-            background: '#f1f5f9', border: '1px solid #cbd5e1',
+            width: 38, height: 38, borderRadius: 6,
+            background: EB.celery, border: `1px solid ${EB.border}`,
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 14, fontWeight: 700, color: '#334155',
+            fontSize: 13, fontWeight: 800, color: EB.forest,
           }}>
             {patientName.split(' ').map(n => n[0]).slice(0, 2).join('') || 'PT'}
           </div>
 
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-              <span style={{ fontSize: 16, fontWeight: 700, color: '#0f172a' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 15, fontWeight: 800, color: EB.ink }}>
                 {selectedLang === 'mr' || selectedLang === 'hi' ? 'श्रीमती गीता शर्मा' : patientName}
               </span>
-              <span style={{ fontSize: 12, color: '#64748b' }}>
-                ({patient?.age || 58}Y / {patient?.gender === 'M' ? 'Male' : 'Female'} • {patient?.village || 'Gram Fatehpur'})
+              <span style={{ fontSize: 11.5, color: EB.inkMuted }}>
+                {patient?.age || 58}Y / {patient?.gender === 'M' ? 'Male' : 'Female'} • {patient?.village || 'Gram Mandawar'}
               </span>
               <span style={{
-                fontSize: 11, fontWeight: 600,
+                fontSize: 10.5, fontWeight: 700,
                 padding: '2px 8px', borderRadius: 4,
-                background: isHighCsme ? '#fee2e2' : '#dcfce7',
-                color: isHighCsme ? '#991b1b' : '#166534',
-                border: `1px solid ${isHighCsme ? '#fca5a5' : '#86efac'}`,
+                background: isHighCsme ? EB.urgentBg : EB.routineBg,
+                color: isHighCsme ? EB.urgentText : EB.routineText,
+                border: `1px solid ${isHighCsme ? EB.urgentBorder : EB.routineBorder}`,
               }}>
-                {isHighCsme ? 'Priority Clinical Referral' : 'Routine Screening'}
+                {isHighCsme ? '● URGENT REFERRAL (CSME)' : '○ ROUTINE MONITORING'}
               </span>
             </div>
 
-            <div style={{ fontSize: 12.5, color: '#334155', marginTop: 2 }}>
+            <div style={{ fontSize: 12, color: EB.inkMuted, marginTop: 2 }}>
               {isHighCsme
-                ? 'जांच निष्कर्ष: मध्यम डायबिटिक रेटिनोपैथी व आँख के केंद्र में सूजन (Center-Involved CSME)'
-                : 'जांच निष्कर्ष: सामान्य डायबिटिक रेटिनोपैथी — नियमित परहेज़ आवश्यक'}
+                ? 'मध्यम डायबिटिक रेटिनोपैथी व मैक्युलर सूजन — विशेषज्ञ जांच आवश्यक'
+                : 'स्थिर रेटिना — नियमित 1 वर्ष में जांच आवश्यक'}
             </div>
           </div>
         </div>
 
-        {/* Minimalist Stat Pill */}
+        {/* Big High-Contrast Urgency Window */}
         <div style={{
-          background: '#f8fafc',
-          border: '1px solid #e2e8f0',
-          borderRadius: 8,
+          background: isHighCsme ? '#FDF2F2' : '#F5F7EF',
+          border: `1px solid ${isHighCsme ? '#FCA5A5' : EB.border}`,
+          borderRadius: 6,
           padding: '6px 14px',
           textAlign: 'right',
         }}>
-          <div style={{ fontSize: 10, fontWeight: 600, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            Hospital Target Window
+          <div style={{ fontSize: 9.5, fontWeight: 700, color: isHighCsme ? EB.urgentText : EB.inkMuted, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            Hospital Timeline
           </div>
-          <div style={{ fontSize: 14, fontWeight: 800, color: isHighCsme ? '#dc2626' : '#16a34a', marginTop: 1 }}>
+          <div style={{ fontSize: 15, fontWeight: 900, color: isHighCsme ? EB.urgentText : EB.forest, marginTop: 1 }}>
             {content.urgencyDays}
           </div>
         </div>
       </div>
 
-      {/* ── Main Two-Column Layout ── */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 0.8fr', gap: 16, flex: 1 }}>
+      {/* ── Main Two-Column Layout (Decluttered: Spoken Dialogue vs Visual Pictocards) ── */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1.15fr 0.85fr', gap: 14, flex: 1, minHeight: 0 }}>
 
-        {/* ════ LEFT COLUMN: Patient Counseling Script & Guidance ════ */}
+        {/* ════ LEFT COLUMN: Focused Spoken Dialogue ════ */}
         <div style={{
-          background: '#ffffff',
-          borderRadius: 12,
-          border: '1px solid #e2e8f0',
-          padding: '20px 22px',
+          background: EB.cardBg,
+          borderRadius: 8,
+          border: `1px solid ${EB.border}`,
+          padding: '16px 18px',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+          boxShadow: '0 1px 3px rgba(37,53,26,0.03)',
         }}>
-          {/* Header */}
-          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+          {/* Header & Language selector */}
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10, flexWrap: 'wrap', gap: 8 }}>
+            <span style={{ fontSize: 11.5, fontWeight: 800, color: EB.forest, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Words to Speak to Patient (परामर्श संवाद)
+            </span>
+
+            {/* Language Pills */}
+            <div style={{
+              display: 'flex',
+              gap: 3,
+              padding: '2px',
+              background: EB.sageLight,
+              borderRadius: 6,
+            }}>
+              {LANGUAGES.map(lang => {
+                const isSel = selectedLang === lang.code;
+                return (
+                  <button
+                    key={lang.code}
+                    onClick={() => setSelectedLang(lang.code)}
+                    style={{
+                      all: 'unset',
+                      cursor: 'pointer',
+                      padding: '3px 8px',
+                      borderRadius: 4,
+                      fontSize: 10.5,
+                      fontWeight: isSel ? 700 : 500,
+                      background: isSel ? EB.forest : 'transparent',
+                      color: isSel ? '#FFFFFF' : EB.forest,
+                      transition: 'all 0.12s',
+                    }}
+                  >
+                    <span>{lang.nativeName}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Vernacular Counseling Script Box (Spacious, Clear, Actionable) */}
+          <div style={{
+            background: '#FAF9F2',
+            border: `1px solid ${EB.border}`,
+            borderLeft: `4px solid ${EB.sage}`,
+            borderRadius: 6,
+            padding: '14px 16px',
+            marginBottom: 12,
+            flex: 1,
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
+          }}>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <IconMessageCircle size={16} color="#0284c7" />
-                <span style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                  Patient Counseling Guide (परामर्श मार्गदर्शिका)
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                <span style={{ fontSize: 10.5, fontWeight: 700, color: EB.sage, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+                  {content.langName} Script
                 </span>
+                <button
+                  onClick={handleToggleSpeak}
+                  style={{
+                    all: 'unset', cursor: 'pointer',
+                    display: 'inline-flex', alignItems: 'center', gap: 4,
+                    padding: '2px 8px', borderRadius: 4,
+                    background: isSpeaking ? EB.urgentBg : EB.celery,
+                    color: isSpeaking ? EB.urgentText : EB.forest,
+                    fontSize: 10.5, fontWeight: 700,
+                  }}
+                  title="Speak vernacular dialogue aloud"
+                >
+                  <IconVolume size={13} color={isSpeaking ? EB.urgentText : EB.forest} />
+                  <span>{isSpeaking ? 'Stop' : 'Listen / सुनिए'}</span>
+                </button>
               </div>
-              <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>
-                Standardized clinical dialogue and instructions in the patient's language
+
+              <div style={{
+                fontSize: 14,
+                lineHeight: 1.65,
+                color: EB.ink,
+                fontWeight: 500,
+              }}>
+                "{content.spokenText}"
               </div>
             </div>
 
-            {/* Language indicator */}
-            <span style={{
-              background: '#f0f9ff', border: '1px solid #bae6fd',
-              color: '#0369a1', fontSize: 11, fontWeight: 700,
-              padding: '3px 10px', borderRadius: 6,
-            }}>
-              {content.langName}
-            </span>
-          </div>
-
-          {/* Clean Segmented Language Selector */}
-          <div style={{
-            display: 'flex',
-            gap: 4,
-            padding: '3px',
-            background: '#f1f5f9',
-            borderRadius: 8,
-            marginBottom: 16,
-          }}>
-            {LANGUAGES.map(lang => {
-              const isSel = selectedLang === lang.code;
-              return (
-                <button
-                  key={lang.code}
-                  onClick={() => setSelectedLang(lang.code)}
-                  style={{
-                    all: 'unset',
-                    cursor: 'pointer',
-                    flex: 1,
-                    textAlign: 'center',
-                    padding: '6px 8px',
-                    borderRadius: 6,
-                    fontSize: 11.5,
-                    fontWeight: isSel ? 700 : 500,
-                    background: isSel ? '#ffffff' : 'transparent',
-                    color: isSel ? '#0f172a' : '#64748b',
-                    boxShadow: isSel ? '0 1px 2px rgba(15,23,42,0.06)' : 'none',
-                    transition: 'all 0.12s ease',
-                  }}
-                >
-                  <span>{lang.nativeName}</span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Vernacular Counseling Script Card */}
-          <div style={{
-            background: '#f8fafc',
-            border: '1px solid #e2e8f0',
-            borderRadius: 10,
-            padding: '16px 18px',
-            borderLeft: '4px solid #0284c7',
-            marginBottom: 16,
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: '#0284c7', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                Clinical Dialogue for ASHA Worker to Speak
-              </span>
+            {/* Collapsible English helper */}
+            <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px dashed ${EB.border}` }}>
               <button
                 onClick={() => setShowEnglishText(!showEnglishText)}
                 style={{
                   all: 'unset', cursor: 'pointer',
-                  fontSize: 11, color: '#64748b', fontWeight: 600,
+                  fontSize: 10.5, color: EB.sage, fontWeight: 600,
                   textDecoration: 'underline',
                 }}
               >
-                {showEnglishText ? 'Hide English' : 'Show English Translation'}
+                {showEnglishText ? '▲ Hide English translation' : '▼ Show English translation'}
               </button>
-            </div>
 
-            <div style={{
-              fontSize: 14,
-              lineHeight: 1.7,
-              color: '#1e293b',
-              fontWeight: 500,
-              fontFamily: selectedLang === 'hi' || selectedLang === 'mr' ? '"Noto Sans Devanagari", sans-serif' : 'inherit',
-            }}>
-              "{content.spokenText}"
+              {showEnglishText && (
+                <div style={{
+                  marginTop: 6,
+                  fontSize: 11,
+                  lineHeight: 1.5,
+                  color: EB.inkMuted,
+                  fontStyle: 'italic',
+                }}>
+                  {content.englishTranslation}
+                </div>
+              )}
             </div>
-
-            {showEnglishText && (
-              <div style={{
-                marginTop: 12,
-                paddingTop: 10,
-                borderTop: '1px dashed #cbd5e1',
-                fontSize: 12,
-                lineHeight: 1.55,
-                color: '#475569',
-                fontStyle: 'italic',
-              }}>
-                <strong>English Summary:</strong> {content.englishTranslation}
-              </div>
-            )}
           </div>
 
-          {/* Key Directives for Patient Care */}
+          {/* Compact 3-Point Takeaway Summary (Clean & Decluttered) */}
           <div style={{
             display: 'grid',
             gridTemplateColumns: 'repeat(3, 1fr)',
-            gap: 10,
-            marginBottom: 16,
+            gap: 8,
+            marginBottom: 10,
           }}>
-            <div style={{ background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 8, padding: '10px 12px' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#991b1b', textTransform: 'uppercase' }}>1. Referral Time</div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: '#b91c1c', marginTop: 2 }}>{content.urgencyDays}</div>
-              <div style={{ fontSize: 10.5, color: '#7f1d1d', marginTop: 2 }}>Hospital Specialist Visit</div>
+            <div style={{ background: '#FAF9F2', border: `1px solid ${EB.border}`, borderRadius: 6, padding: '8px 10px' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: EB.inkMuted, textTransform: 'uppercase' }}>1. Timeline</div>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: EB.forest, marginTop: 1 }}>{content.urgencyDays}</div>
+              <div style={{ fontSize: 10, color: EB.inkMuted }}>District Eye Clinic</div>
             </div>
 
-            <div style={{ background: '#f0f9ff', border: '1px solid #bae6fd', borderRadius: 8, padding: '10px 12px' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#0369a1', textTransform: 'uppercase' }}>2. Retinal Threat</div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: '#0284c7', marginTop: 2 }}>CSME Center</div>
-              <div style={{ fontSize: 10.5, color: '#075985', marginTop: 2 }}>Anti-VEGF / Laser Eval</div>
+            <div style={{ background: '#FAF9F2', border: `1px solid ${EB.border}`, borderRadius: 6, padding: '8px 10px' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: EB.inkMuted, textTransform: 'uppercase' }}>2. Glucose</div>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: EB.forest, marginTop: 1 }}>&lt; 130 mg/dL</div>
+              <div style={{ fontSize: 10, color: EB.inkMuted }}>Fasting Sugar Goal</div>
             </div>
 
-            <div style={{ background: '#fffbeb', border: '1px solid #fde68a', borderRadius: 8, padding: '10px 12px' }}>
-              <div style={{ fontSize: 10, fontWeight: 700, color: '#92400e', textTransform: 'uppercase' }}>3. Blood Sugar</div>
-              <div style={{ fontSize: 13, fontWeight: 800, color: '#d97706', marginTop: 2 }}>&lt; 130 mg/dL</div>
-              <div style={{ fontSize: 10.5, color: '#78350f', marginTop: 2 }}>Strict Fasting Target</div>
+            <div style={{ background: '#FAF9F2', border: `1px solid ${EB.border}`, borderRadius: 6, padding: '8px 10px' }}>
+              <div style={{ fontSize: 9, fontWeight: 700, color: EB.inkMuted, textTransform: 'uppercase' }}>3. Diet</div>
+              <div style={{ fontSize: 12.5, fontWeight: 800, color: EB.forest, marginTop: 1 }}>No Sweets</div>
+              <div style={{ fontSize: 10, color: EB.inkMuted }}>Avoid Sugary Tea</div>
             </div>
           </div>
 
-          {/* ASHA Protocol Checklist */}
+          {/* Compact Verification Strip */}
           <div style={{
-            background: '#f8fafc',
-            border: '1px solid #e2e8f0',
-            borderRadius: 8,
-            padding: '12px 14px',
-            marginTop: 'auto',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            background: EB.sageLight, border: `1px solid ${EB.border}`, borderRadius: 6,
+            padding: '6px 12px', fontSize: 10.5, color: EB.forest,
           }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#334155', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.03em' }}>
-              ASHA Field Protocol Checklist
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '6px 12px', fontSize: 11, color: '#475569' }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <IconCheck size={13} color="#16a34a" />
-                <span>Screening results explained to patient</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <IconCheck size={13} color="#16a34a" />
-                <span>Urgency timeline ({content.urgencyDays}) conveyed</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <IconCheck size={13} color="#16a34a" />
-                <span>Glycemic target & diet explained</span>
-              </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <IconCheck size={13} color="#16a34a" />
-                <span>Printed referral slip handed over</span>
-              </div>
-            </div>
+            <span style={{ fontWeight: 700 }}>ASHA Verification:</span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <IconCheck size={12} color={EB.forest} /> Result Explained
+            </span>
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+              <IconCheck size={12} color={EB.forest} /> Referral Handed Over
+            </span>
           </div>
         </div>
 
-        {/* ════ RIGHT COLUMN: 4 Universal Zero-Literacy Visual Pictocards ════ */}
+        {/* ════ RIGHT COLUMN: Authentic Clinical Patient Medical Advice Slip ════ */}
         <div style={{
-          background: '#ffffff',
-          borderRadius: 12,
-          border: '1px solid #e2e8f0',
-          padding: '20px 20px',
+          background: '#FFFFFF',
+          borderRadius: 8,
+          border: `1px solid ${EB.border}`,
+          padding: '16px 18px',
           display: 'flex',
           flexDirection: 'column',
-          boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
+          boxShadow: '0 2px 10px rgba(37,53,26,0.06)',
+          position: 'relative',
         }}>
-          <div style={{ marginBottom: 14 }}>
-            <div style={{ fontSize: 13, fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-              Zero-Literacy Visual Guide (सचित्र मार्गदर्शिका)
+          {/* Official Letterhead */}
+          <div style={{ borderBottom: `2px solid ${EB.forest}`, paddingBottom: 10, marginBottom: 10 }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+              <div>
+                <div style={{ fontSize: 9, fontWeight: 800, color: EB.sage, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 2 }}>
+                  National Health Mission · NPCB&VI Rural Eye Care
+                </div>
+                <div style={{ fontSize: 13.5, fontWeight: 900, color: EB.forest, letterSpacing: '-0.01em' }}>
+                  PATIENT EYE CARE ADVICE SLIP
+                </div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: EB.ink }}>
+                  रोगी नेत्र स्वास्थ्य एवं परामर्श पर्ची
+                </div>
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: 11, fontWeight: 700, color: EB.ink }}>
+                  {new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                </div>
+                <div style={{ fontSize: 9.5, color: EB.inkMuted, fontFamily: 'monospace', marginTop: 1 }}>
+                  REF: {patient?.id || 'DR-88219'}
+                </div>
+                <span style={{
+                  display: 'inline-block', marginTop: 4, padding: '2px 6px', borderRadius: 4,
+                  background: isHighCsme ? EB.urgentBg : EB.routineBg,
+                  color: isHighCsme ? EB.urgentText : EB.routineText,
+                  border: `1px solid ${isHighCsme ? EB.urgentBorder : EB.routineBorder}`,
+                  fontSize: 9, fontWeight: 800, textTransform: 'uppercase',
+                }}>
+                  {isHighCsme ? '● Urgent Referral' : '○ Routine Recall'}
+                </span>
+              </div>
             </div>
-            <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>
-              Universal illustrated visual cues for patients and caregivers
+
+            {/* Patient Demographics Strip */}
+            <div style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              marginTop: 8, paddingTop: 6, borderTop: `1px dashed ${EB.border}`,
+              fontSize: 10.5, color: EB.inkMuted,
+            }}>
+              <span><strong>मरीज (Patient):</strong> {patientName} ({patient?.age || 58} Y / {patient?.gender === 'M' ? 'Male' : 'Female'})</span>
+              <span><strong>केंद्र (Center):</strong> {patient?.village || 'Sub-Center Mandawar'}</span>
             </div>
           </div>
 
-          {/* 4 Clean Minimalist Cards */}
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12, flex: 1 }}>
+          {/* Rx Prescription Header */}
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
+            <span style={{ fontSize: 15, fontWeight: 900, color: EB.forest, fontFamily: 'serif' }}>℞</span>
+            <span style={{ fontSize: 10.5, fontWeight: 800, color: EB.forest, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              Clinical Directives & Home Care (परामर्श निर्देश)
+            </span>
+          </div>
 
-            {/* Pictocard 1: Hospital Countdown Calendar */}
+          {/* 4 Clinical Advice Sections */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 7, flex: 1 }}>
+
+            {/* Section 1: Hospital Consultation Timeline */}
             <div style={{
-              background: '#fef2f2',
-              border: '1px solid #fecaca',
-              borderRadius: 10,
-              padding: '14px 12px',
+              background: '#FAF9F2',
+              border: `1px solid ${isHighCsme ? '#FCA5A5' : EB.border}`,
+              borderLeft: `4px solid ${isHighCsme ? EB.urgentText : EB.forest}`,
+              borderRadius: 5,
+              padding: '8px 10px',
               display: 'flex',
-              flexDirection: 'column',
+              alignItems: 'center',
               justifyContent: 'space-between',
+              gap: 10,
             }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <IconCalendar size={22} color="#dc2626" />
-                  <span style={{ fontSize: 10, fontWeight: 700, background: '#fee2e2', color: '#991b1b', padding: '2px 6px', borderRadius: 4 }}>
-                    Urgent
-                  </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                <div style={{
+                  width: 30, height: 30, borderRadius: 5,
+                  background: isHighCsme ? EB.urgentBg : EB.celery,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <IconCalendar size={17} color={isHighCsme ? EB.urgentText : EB.forest} />
                 </div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: '#991b1b', letterSpacing: '-0.02em' }}>
+                <div>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: EB.ink }}>
+                    जिला अस्पताल नेत्र विभाग जाएं (Hospital Visit)
+                  </div>
+                  <div style={{ fontSize: 10, color: EB.inkMuted }}>
+                    Macular OCT व नेत्र विशेषज्ञ जांच आवश्यक
+                  </div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <span style={{
+                  fontSize: 13, fontWeight: 900,
+                  color: isHighCsme ? EB.urgentText : EB.forest,
+                  background: isHighCsme ? '#FEE2E2' : '#E8EBDD',
+                  padding: '3px 8px', borderRadius: 4, display: 'inline-block',
+                }}>
                   {content.urgencyDays}
-                </div>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#0f172a', marginTop: 3 }}>
-                  जिला अस्पताल जाएं
-                </div>
-              </div>
-              <div style={{ fontSize: 10, color: '#b91c1c', borderTop: '1px solid #fecaca', paddingTop: 6, marginTop: 6 }}>
-                District Hospital Eye Clinic
+                </span>
               </div>
             </div>
 
-            {/* Pictocard 2: Laser / Drops Treatment */}
+            {/* Section 2: Retinal Vision Protection */}
             <div style={{
-              background: '#f0f9ff',
-              border: '1px solid #bae6fd',
-              borderRadius: 10,
-              padding: '14px 12px',
+              background: '#FAF9F2',
+              border: `1px solid ${EB.border}`,
+              borderLeft: `4px solid ${EB.sage}`,
+              borderRadius: 5,
+              padding: '8px 10px',
               display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 9,
             }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <IconEye size={22} color="#0284c7" />
-                  <span style={{ fontSize: 10, fontWeight: 700, background: '#e0f2fe', color: '#0369a1', padding: '2px 6px', borderRadius: 4 }}>
-                    Care
-                  </span>
-                </div>
-                <div style={{ fontSize: 14, fontWeight: 800, color: '#0369a1' }}>
-                  आई ड्रॉप्स व लेज़र
-                </div>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#0f172a', marginTop: 3 }}>
-                  रोशनी की सुरक्षा
-                </div>
+              <div style={{
+                width: 30, height: 30, borderRadius: 5,
+                background: EB.sageLight,
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <IconEye size={17} color={EB.forest} />
               </div>
-              <div style={{ fontSize: 10, color: '#0284c7', borderTop: '1px solid #bae6fd', paddingTop: 6, marginTop: 6 }}>
-                Protect Retinal Vision
+              <div>
+                <div style={{ fontSize: 11.5, fontWeight: 800, color: EB.ink }}>
+                  आई ड्रॉप्स व रोशनी की सुरक्षा (Ocular Care Protocol)
+                </div>
+                <div style={{ fontSize: 10, color: EB.inkMuted }}>
+                  डॉक्टर द्वारा दी गई ड्रॉप्स समय पर डालें, तेज धूप में चश्मा लगाएं, आंखें कतई न मलें
+                </div>
               </div>
             </div>
 
-            {/* Pictocard 3: Sugar Control Target */}
+            {/* Section 3: Glycemic Control Target */}
             <div style={{
-              background: '#fffbeb',
-              border: '1px solid #fde68a',
-              borderRadius: 10,
-              padding: '14px 12px',
+              background: '#FAF9F2',
+              border: `1px solid ${EB.border}`,
+              borderLeft: `4px solid #C2410C`,
+              borderRadius: 5,
+              padding: '8px 10px',
               display: 'flex',
-              flexDirection: 'column',
+              alignItems: 'center',
               justifyContent: 'space-between',
+              gap: 10,
             }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-                  <IconDroplet size={22} color="#d97706" />
-                  <span style={{ fontSize: 10, fontWeight: 700, background: '#fef3c7', color: '#92400e', padding: '2px 6px', borderRadius: 4 }}>
-                    Target
-                  </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+                <div style={{
+                  width: 30, height: 30, borderRadius: 5,
+                  background: '#FFEDD5',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  flexShrink: 0,
+                }}>
+                  <IconDroplet size={17} color="#C2410C" />
                 </div>
-                <div style={{ fontSize: 18, fontWeight: 800, color: '#92400e', letterSpacing: '-0.02em' }}>
+                <div>
+                  <div style={{ fontSize: 11.5, fontWeight: 800, color: EB.ink }}>
+                    मधुमेह नियंत्रण लक्ष्य (Fasting Blood Sugar)
+                  </div>
+                  <div style={{ fontSize: 10, color: EB.inkMuted }}>
+                    दवा व इंसुलिन का नियमित सेवन करें, हर 15 दिन में शूगर जांचें
+                  </div>
+                </div>
+              </div>
+              <div style={{ textAlign: 'right', flexShrink: 0 }}>
+                <span style={{
+                  fontSize: 13, fontWeight: 900, color: '#9A3412',
+                  background: '#FFEDD5', padding: '3px 8px', borderRadius: 4, display: 'inline-block',
+                }}>
                   &lt; 130 mg/dL
-                </div>
-                <div style={{ fontSize: 11.5, fontWeight: 700, color: '#0f172a', marginTop: 3 }}>
-                  खाली पेट शूगर
-                </div>
-              </div>
-              <div style={{ fontSize: 10, color: '#b45309', borderTop: '1px solid #fde68a', paddingTop: 6, marginTop: 6 }}>
-                Fasting Glucose Goal
+                </span>
               </div>
             </div>
 
-            {/* Pictocard 4: Diet Dos & Don'ts */}
+            {/* Section 4: Dietary Guidelines */}
             <div style={{
-              background: '#f8fafc',
-              border: '1px solid #e2e8f0',
-              borderRadius: 10,
-              padding: '12px 10px',
+              background: '#FAF9F2',
+              border: `1px solid ${EB.border}`,
+              borderLeft: `4px solid #274E13`,
+              borderRadius: 5,
+              padding: '8px 10px',
               display: 'flex',
-              flexDirection: 'column',
-              justifyContent: 'space-between',
+              alignItems: 'center',
+              gap: 9,
             }}>
-              <div>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 6 }}>
-                  <IconUtensils size={18} color="#475569" />
-                  <span style={{ fontSize: 10, fontWeight: 700, background: '#f1f5f9', color: '#475569', padding: '2px 6px', borderRadius: 4 }}>
-                    Diet
-                  </span>
-                </div>
-                <div style={{
-                  background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 5,
-                  padding: '3px 6px', marginBottom: 5, fontSize: 9.5, color: '#166534', fontWeight: 600,
-                  display: 'flex', alignItems: 'center', gap: 4,
-                }}>
-                  <IconCheck size={11} color="#16a34a" />
-                  <span>पालक, दालें, करेला, पानी</span>
-                </div>
-                <div style={{
-                  background: '#fef2f2', border: '1px solid #fecaca', borderRadius: 5,
-                  padding: '3px 6px', fontSize: 9.5, color: '#991b1b', fontWeight: 600,
-                  display: 'flex', alignItems: 'center', gap: 4,
-                }}>
-                  <IconX size={11} color="#dc2626" />
-                  <span>मिठाई, मीठी चाय, समोसा</span>
-                </div>
+              <div style={{
+                width: 30, height: 30, borderRadius: 5,
+                background: '#EAF0E2',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                flexShrink: 0,
+              }}>
+                <IconUtensils size={17} color="#274E13" />
               </div>
-              <div style={{ fontSize: 9.5, color: '#64748b', borderTop: '1px solid #e2e8f0', paddingTop: 4, marginTop: 4, textAlign: 'center' }}>
-                Strict Nutrition Control
+              <div style={{ flex: 1 }}>
+                <div style={{ fontSize: 11.5, fontWeight: 800, color: EB.ink, marginBottom: 2 }}>
+                  खान-पान नियम (Dietary Do's &amp; Don'ts)
+                </div>
+                <div style={{ display: 'flex', gap: 8, fontSize: 9.5 }}>
+                  <span style={{ color: '#274E13', fontWeight: 700 }}>✓ हरी सब्जियां, जामुन, करेला, दालें</span>
+                  <span style={{ color: '#A02511', fontWeight: 700 }}>✕ मीठी चाय, मिठाई, तली चीजें बंद</span>
+                </div>
               </div>
             </div>
 
+          </div>
+
+          {/* Verification & Helpline Footer */}
+          <div style={{
+            marginTop: 9, paddingTop: 8, borderTop: `1px solid ${EB.border}`,
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            fontSize: 9.5, color: EB.inkMuted,
+          }}>
+            <div>
+              <strong>हेल्पलाइन:</strong> 104 (स्वास्थ्य सेवा) / 108 (एम्बुलेंस)
+            </div>
+            <div style={{ textAlign: 'right', fontStyle: 'italic' }}>
+              हस्ताक्षर आशा कार्यकर्ता (ASHA Verification)
+            </div>
           </div>
 
           {/* Action CTA */}
-          <div style={{ marginTop: 14 }}>
+          <div style={{ marginTop: 9 }}>
             <button
               onClick={onPrintSlip}
               style={{
@@ -606,23 +706,25 @@ export default function AshaPatientCounselor({
                 cursor: 'pointer',
                 width: '100%',
                 boxSizing: 'border-box',
-                padding: '9px 14px',
-                borderRadius: 8,
-                background: '#0f172a',
-                color: '#ffffff',
+                padding: '9px 12px',
+                borderRadius: 6,
+                background: EB.forest,
+                color: '#FFFFFF',
                 fontSize: 12,
-                fontWeight: 600,
+                fontWeight: 700,
                 textAlign: 'center',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                gap: 7,
-                boxShadow: '0 1px 2px rgba(15,23,42,0.1)',
-                transition: 'all 0.15s ease',
+                gap: 6,
+                boxShadow: '0 1px 3px rgba(37,53,26,0.2)',
+                transition: 'background 0.12s',
               }}
+              onMouseEnter={e => e.currentTarget.style.background = EB.forestHover}
+              onMouseLeave={e => e.currentTarget.style.background = EB.forest}
             >
-              <IconPrinter size={15} color="#ffffff" />
-              <span>Print Patient Takeaway Handout</span>
+              <IconPrinter size={14} color="#FFFFFF" />
+              <span>Print Medical Advice Slip (परामर्श पर्ची प्रिंट करें)</span>
             </button>
           </div>
         </div>

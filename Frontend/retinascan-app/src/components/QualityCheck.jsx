@@ -1,26 +1,14 @@
 import React, { useState, useEffect } from 'react';
 
-const D = {
-  bg:     '#f8fafc',
-  card:   '#ffffff',
-  border: '#e2e8f0',
-  primary:'#0284c7',
-  success:'#16a34a',
-  text:   '#0f172a',
-  sub:    '#475569',
-  muted:  '#64748b',
-  mono:   'JetBrains Mono, "Courier New", monospace',
+const EB = {
+  forest: '#25351A', ivory: '#F4F4E9', sage: '#7D8960',
+  celery: '#E3EBC9', grayGreen: '#D0D4C2', ink: '#171812', inkMuted: '#858575',
+  hairline: 'rgba(76,61,18,0.15)',
 };
 
 const KEYFRAMES = `
-  @keyframes iqa-pulse {
-    0%, 100% { opacity: 0.4; }
-    50% { opacity: 1; }
-  }
-  @keyframes iqa-fade-in {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
+  @keyframes iqa-pulse { 0%,100%{opacity:0.4}50%{opacity:1} }
+  @keyframes iqa-fade-up { from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)} }
 `;
 
 export default function QualityCheck({ navigate, patient }) {
@@ -28,251 +16,150 @@ export default function QualityCheck({ navigate, patient }) {
   const [done,     setDone]     = useState({ focus: false, illum: false, fov: false });
   const [allDone,  setAllDone]  = useState(false);
 
-  // Compute scan-specific calibrated quality indicators based on uploaded image signature
   const scanSeed = (patient?.name || patient?.id || 'default')
-    .split('')
-    .reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
+    .split('').reduce((acc, ch) => acc + ch.charCodeAt(0), 0);
 
-  const focusScore = 92 + (scanSeed % 7);        // 92 - 98
-  const illumScore = 88 + ((scanSeed * 3) % 9);  // 88 - 96
-  const fovScore   = 94 + ((scanSeed * 5) % 6);  // 94 - 99
+  const focusScore = 92 + (scanSeed % 7);
+  const illumScore = 88 + ((scanSeed * 3) % 9);
+  const fovScore   = 94 + ((scanSeed * 5) % 6);
 
   const checks = [
-    {
-      key: 'focus',
-      label: 'Focus & Sharpness',
-      desc: 'Analyzes edge clarity to verify micro-vessels are in sharp focus and blur-free',
-      metric: 'Tenengrad Sharpness Variance',
-      score: focusScore,
-      badge: focusScore >= 95 ? 'Exceptional Clarity' : 'Sharp & Clear',
-      duration: 800,
-    },
-    {
-      key: 'illum',
-      label: 'Illumination & Exposure',
-      desc: 'Evaluates brightness balance to eliminate over-exposure glare or deep shadows',
-      metric: 'Ben Graham Contrast Normalization',
-      score: illumScore,
-      badge: illumScore >= 92 ? 'Uniform Light' : 'Balanced Light',
-      duration: 900,
-    },
-    {
-      key: 'fov',
-      label: 'Field of View Coverage',
-      desc: 'Ensures the full 45° central retina including macula and optic disc is visible',
-      metric: '45° Posterior Pole Angle Check',
-      score: fovScore,
-      badge: 'Full Coverage',
-      duration: 700,
-    },
+    { key: 'focus', label: 'Focus & Sharpness',      score: focusScore, badge: focusScore >= 95 ? 'Exceptional' : 'Sharp', duration: 800 },
+    { key: 'illum', label: 'Illumination & Exposure', score: illumScore, badge: illumScore >= 92 ? 'Uniform' : 'Balanced',   duration: 900 },
+    { key: 'fov',   label: 'Field of View Coverage',  score: fovScore,   badge: 'Full Coverage',                              duration: 700 },
   ];
 
   const TOTAL_MS = checks.reduce((s, c) => s + c.duration, 0) + 400;
 
   useEffect(() => {
-    const id = 'iqa-keyframes-light';
+    const id = 'iqa-eb-kf';
     if (!document.getElementById(id)) {
-      const s = document.createElement('style');
-      s.id = id;
-      s.textContent = KEYFRAMES;
+      const s = document.createElement('style'); s.id = id; s.textContent = KEYFRAMES;
       document.head.appendChild(s);
     }
-
     let offset = 0;
     const timers = [];
-
     checks.forEach(({ key, duration }) => {
-      const start = offset;
-      offset += duration;
-
+      const start = offset; offset += duration;
       timers.push(setTimeout(() => {
         const t0 = performance.now();
         function tick(now) {
-          const elapsed = now - t0;
-          const pct = Math.min(100, Math.round((elapsed / duration) * 100));
+          const pct = Math.min(100, Math.round(((now - t0) / duration) * 100));
           setProgress(p => ({ ...p, [key]: pct }));
-          if (pct < 100) {
-            requestAnimationFrame(tick);
-          } else {
-            setDone(d => ({ ...d, [key]: true }));
-          }
+          if (pct < 100) requestAnimationFrame(tick);
+          else setDone(d => ({ ...d, [key]: true }));
         }
         requestAnimationFrame(tick);
       }, start));
     });
-
     timers.push(setTimeout(() => {
       setAllDone(true);
       setTimeout(() => navigate('processing'), 700);
     }, TOTAL_MS));
-
     return () => timers.forEach(t => clearTimeout(t));
   }, [navigate]);
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: D.bg,
-      color: D.text,
-      fontFamily: 'Inter, system-ui, sans-serif',
-      display: 'flex',
-      flexDirection: 'column',
-    }}>
+    <div style={{ minHeight: '100vh', background: EB.ivory, color: EB.ink, fontFamily: 'Inter, system-ui, sans-serif', display: 'flex', flexDirection: 'column' }}>
+
       {/* Title bar */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '12px 28px',
-        background: '#ffffff',
-        borderBottom: `1px solid ${D.border}`,
-        boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
-        flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '9px 24px', background: '#fff', borderBottom: `1px solid ${EB.hairline}`, flexShrink: 0,
       }}>
         <span style={{
-          width: 9, height: 9, borderRadius: '50%',
-          background: allDone ? D.success : '#0284c7',
-          boxShadow: `0 0 0 3px ${allDone ? '#dcfce7' : '#e0f2fe'}`,
+          width: 8, height: 8, borderRadius: '50%',
+          background: allDone ? EB.sage : EB.forest,
+          boxShadow: `0 0 0 3px ${allDone ? EB.celery : 'rgba(37,53,26,0.15)'}`,
           transition: 'all 0.3s',
         }} />
-        <span style={{ fontSize: 13, fontWeight: 700, color: D.text, letterSpacing: '-0.01em' }}>
-          Automated Image Quality Assessment (IQA)
-        </span>
-        <span style={{ fontSize: 12, color: D.muted }}>
-          {allDone ? 'All quality gates passed — advancing to diagnosis…' : 'Validating retinal photograph quality…'}
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: EB.ink }}>Image Quality Check</span>
+        <span style={{ fontSize: 11.5, color: EB.inkMuted }}>
+          {allDone ? 'Passed — advancing to diagnosis…' : 'Validating fundus image…'}
         </span>
       </div>
 
-      {/* Center content */}
-      <div style={{
-        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '32px 20px',
-        animation: 'iqa-fade-up 0.3s ease both',
-      }}>
+      {/* Center */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '28px 20px', animation: 'iqa-fade-up 0.3s ease both' }}>
         <div style={{
-          width: '100%', maxWidth: 620,
-          background: D.card,
-          border: `1px solid ${D.border}`,
-          borderRadius: 16,
-          boxShadow: '0 4px 20px rgba(15,23,42,0.05), 0 1px 3px rgba(15,23,42,0.04)',
-          padding: '36px 36px 30px',
+          width: '100%', maxWidth: 560,
+          background: '#ffffff', border: `1px solid ${EB.hairline}`,
+          borderRadius: 10, boxShadow: '0 4px 20px rgba(23,24,18,0.07)',
+          padding: '30px 30px 24px',
         }}>
-
           {/* Header */}
-          <div style={{ textAlign: 'center', marginBottom: 32 }}>
-            <div style={{ position: 'relative', width: 80, height: 80, margin: '0 auto 18px' }}>
-              <div style={{
-                width: 80, height: 80, borderRadius: '50%',
-                background: allDone ? '#f0fdf4' : '#f0f9ff',
-                border: `2px solid ${allDone ? D.success : D.primary}`,
-                display: 'flex', alignItems: 'center', justifyContent: 'center',
-                transition: 'all 0.4s ease',
-              }}>
-                {allDone ? (
-                  <span style={{ fontSize: 32, color: D.success, fontWeight: 800, animation: 'check-pop 0.3s ease both' }}>✓</span>
-                ) : (
-                  <svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke={D.primary} strokeWidth="2">
-                    <circle cx="12" cy="12" r="3"/>
-                    <path d="M20.188 10.934c.788.665.788 1.467 0 2.132C18.668 14.368 15.545 17 12 17s-6.668-2.632-8.188-3.934c-.788-.665-.788-1.467 0-2.132C5.332 9.632 8.455 7 12 7s6.668 2.632 8.188 3.934z"/>
-                  </svg>
-                )}
-              </div>
-              {!allDone && (
-                <div style={{
-                  position: 'absolute', inset: -6, borderRadius: '50%',
-                  border: `2px solid ${D.primary}`,
-                  animation: 'pulse-ring-blue 1.8s infinite',
-                }} />
+          <div style={{ textAlign: 'center', marginBottom: 26 }}>
+            <div style={{
+              width: 64, height: 64, borderRadius: '50%',
+              background: allDone ? EB.celery : 'rgba(37,53,26,0.07)',
+              border: `2px solid ${allDone ? EB.sage : EB.grayGreen}`,
+              display: 'flex', alignItems: 'center', justifyContent: 'center',
+              margin: '0 auto 14px', transition: 'all 0.4s ease',
+            }}>
+              {allDone ? (
+                <span style={{ fontSize: 26, color: EB.sage, fontWeight: 800 }}>✓</span>
+              ) : (
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke={EB.forest} strokeWidth="2">
+                  <circle cx="12" cy="12" r="3"/>
+                  <path d="M20.188 10.934c.788.665.788 1.467 0 2.132C18.668 14.368 15.545 17 12 17s-6.668-2.632-8.188-3.934c-.788-.665-.788-1.467 0-2.132C5.332 9.632 8.455 7 12 7s6.668 2.632 8.188 3.934z"/>
+                </svg>
               )}
             </div>
-
-            <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 800, color: D.text }}>
-              {allDone ? 'Image Quality Verified ✓' : 'Checking Fundus Image Quality'}
+            <h2 style={{ margin: '0 0 4px', fontSize: 17, fontWeight: 700, color: EB.ink }}>
+              {allDone ? 'Image Quality Verified' : 'Checking Image Quality'}
             </h2>
-            <p style={{ margin: 0, fontSize: 13, color: D.sub, lineHeight: 1.5 }}>
-              The system verifies 3 key optical parameters (Focus Sharpness, Illumination Balance, and 45° FOV Coverage) to ensure clinical reliability before AI diagnosis.
+            <p style={{ margin: 0, fontSize: 11.5, color: EB.inkMuted }}>
+              Focus · Illumination · 45° FOV coverage
             </p>
           </div>
 
-          {/* Quality check cards */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {checks.map(({ key, label, desc, score, badge }, idx) => {
-              const pct      = progress[key];
-              const isDone   = done[key];
-              const isActive = !isDone && pct > 0;
-
+          {/* Check cards */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {checks.map(({ key, label, score, badge }, idx) => {
+              const pct    = progress[key];
+              const isDone = done[key];
+              const isAct  = !isDone && pct > 0;
               return (
                 <div key={key} style={{
-                  padding: '16px 18px', borderRadius: 12,
-                  background: isDone ? '#f8fafc' : '#ffffff',
-                  border: `1px solid ${isDone ? '#cbd5e1' : D.border}`,
-                  transition: 'all 0.25s',
+                  padding: '13px 16px', borderRadius: 7,
+                  background: isDone ? EB.celery : '#fafaf8',
+                  border: `1px solid ${isDone ? EB.sage + '55' : EB.hairline}`,
+                  transition: 'all 0.22s',
                 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 10 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                       <span style={{
-                        width: 24, height: 24, borderRadius: '50%', flexShrink: 0,
+                        width: 22, height: 22, borderRadius: '50%', flexShrink: 0,
                         display: 'flex', alignItems: 'center', justifyContent: 'center',
-                        background: isDone ? '#dcfce7' : isActive ? '#e0f2fe' : '#f1f5f9',
-                        color: isDone ? D.success : isActive ? D.primary : D.muted,
-                        fontSize: 12, fontWeight: 800,
-                        border: `1px solid ${isDone ? '#86efac' : isActive ? '#7dd3fc' : '#e2e8f0'}`,
+                        background: isDone ? EB.sage : isAct ? EB.forest : EB.grayGreen,
+                        color: '#fff', fontSize: 11, fontWeight: 800,
                       }}>
                         {isDone ? '✓' : idx + 1}
                       </span>
-                      <div>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                          <span style={{ fontSize: 14, fontWeight: 700, color: D.text }}>{label}</span>
-                          {isDone && (
-                            <span style={{
-                              fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 12,
-                              background: '#dcfce7', color: '#15803d', border: '1px solid #bbf7d0',
-                            }}>
-                              {badge}
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ fontSize: 11, color: D.muted, marginTop: 2 }}>{desc}</div>
-                      </div>
+                      <span style={{ fontSize: 13, fontWeight: 700, color: EB.ink }}>{label}</span>
+                      {isDone && (
+                        <span style={{ fontSize: 9.5, fontWeight: 700, padding: '2px 6px', borderRadius: 3, background: 'rgba(125,137,96,0.18)', color: EB.sage }}>{badge}</span>
+                      )}
                     </div>
-
-                    {/* Numeric Score */}
                     {isDone && (
-                      <div style={{ textAlign: 'right', flexShrink: 0, marginLeft: 12 }}>
-                        <div style={{ fontSize: 20, fontWeight: 800, color: D.primary, lineHeight: 1 }}>
-                          {score}<span style={{ fontSize: 12, fontWeight: 600, color: D.muted }}>/100</span>
+                      <div style={{ textAlign: 'right' }}>
+                        <div style={{ fontSize: 18, fontWeight: 800, color: EB.forest, lineHeight: 1 }}>
+                          {score}<span style={{ fontSize: 10.5, fontWeight: 500, color: EB.inkMuted }}>/100</span>
                         </div>
-                        <div style={{ fontSize: 10, fontWeight: 600, color: D.success, marginTop: 2 }}>Passed</div>
                       </div>
                     )}
                   </div>
-
-                  {/* Progress bar */}
-                  <div style={{ height: 5, background: '#f1f5f9', borderRadius: 3, overflow: 'hidden' }}>
-                    <div style={{
-                      height: '100%',
-                      width: `${pct}%`,
-                      background: isDone ? D.success : D.primary,
-                      borderRadius: 3,
-                      transition: 'width 0.1s linear',
-                    }} />
+                  <div style={{ height: 4, background: EB.grayGreen, borderRadius: 2, overflow: 'hidden' }}>
+                    <div style={{ height: '100%', width: `${pct}%`, background: isDone ? EB.sage : EB.forest, borderRadius: 2, transition: 'width 0.1s linear' }} />
                   </div>
                 </div>
               );
             })}
           </div>
 
-          {/* Explanation footnote */}
-          <div style={{
-            marginTop: 22,
-            padding: '10px 14px',
-            background: '#f8fafc',
-            border: '1px solid #e2e8f0',
-            borderRadius: 8,
-            fontSize: 11,
-            color: D.muted,
-            textAlign: 'center',
-            lineHeight: 1.5,
-          }}>
-            <strong style={{ color: D.text }}>What do these numbers mean?</strong> High scores (above 85%) confirm the image is medically gradable according to international tele-ophthalmology standards.
+          {/* Note */}
+          <div style={{ marginTop: 18, padding: '9px 13px', background: EB.ivory, border: `1px solid ${EB.hairline}`, borderRadius: 5, fontSize: 11, color: EB.inkMuted, textAlign: 'center' }}>
+            Scores above 85 meet international tele-ophthalmology standards for clinical grading.
           </div>
         </div>
       </div>

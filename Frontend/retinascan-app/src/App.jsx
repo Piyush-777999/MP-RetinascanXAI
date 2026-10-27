@@ -24,6 +24,34 @@ const LEVEL_LABELS = [
   'Proliferative DR',
 ];
 
+// Helper to convert uploaded File into a lightweight persistent base64 data URL
+function fileToThumbnail(file, maxWidth = 512) {
+  return new Promise((resolve) => {
+    if (!file) return resolve('');
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement('canvas');
+          const scale = Math.min(1, maxWidth / Math.max(img.width, img.height));
+          canvas.width = Math.round(img.width * scale);
+          canvas.height = Math.round(img.height * scale);
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+          resolve(canvas.toDataURL('image/jpeg', 0.82));
+        } catch (err) {
+          resolve(e.target.result);
+        }
+      };
+      img.onerror = () => resolve(e.target.result);
+      img.src = e.target.result;
+    };
+    reader.onerror = () => resolve('');
+    reader.readAsDataURL(file);
+  });
+}
+
 export default function App() {
   const [screen,           setScreen]           = useState('home');
   const [patient,          setPatient]          = useState(demoPresets[2]);
@@ -37,6 +65,32 @@ export default function App() {
   const [apiResponse,      setApiResponse]      = useState(null);
   const [uploadError,      setUploadError]      = useState(null);
   const [appLang,          setAppLang]          = useState(() => localStorage.getItem('retinascan_lang') || 'hi');
+
+  // ── Scanned patients queue persisted to localStorage ─────────────────────
+  const [scannedPatients, setScannedPatients] = useState(() => {
+    try {
+      const saved = localStorage.getItem('retinascan_scanned_patients');
+      return saved ? JSON.parse(saved) : [];
+    } catch (e) {
+      console.warn('Could not read scanned patients from localStorage', e);
+      return [];
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('retinascan_scanned_patients', JSON.stringify(scannedPatients));
+    } catch (e) {
+      console.warn('LocalStorage save failed (quota exceeded?)', e);
+    }
+  }, [scannedPatients]);
+
+  function clearScannedPatients() {
+    setScannedPatients([]);
+    try {
+      localStorage.removeItem('retinascan_scanned_patients');
+    } catch (e) {}
+  }
 
   const t = getT(appLang);
 
@@ -69,25 +123,31 @@ export default function App() {
   }
 
   function onSelectPatient(p) {
+    if (!p) return;
     setPatient(p);
     const sev = p?.severity ?? 2;
     setSeverity(sev);
-    setSelectedEye('od');
-    setHeatmapUrl(`/images/heatmap_${sev}_od.png`);
-    setUploadedImageUrl('');
-    setAllProbs(null);
+    const eye = (p?.selectedEye || p?.eye || 'od').toLowerCase();
+    setSelectedEye(eye);
+
+    // If it's a scanned patient with a local image URL or base64 thumbnail:
+    if (p.isScanned || p.imageUrl || p.thumbnailUrl) {
+      setUploadedImageUrl(p.imageUrl || p.thumbnailUrl || '');
+      setHeatmapUrl(p.heatmap_url || p.heatmapUrl || '');
+    } else {
+      // Demo preset: use bundled asset paths
+      setHeatmapUrl(`/images/heatmap_${sev}_${eye}.png`);
+      setUploadedImageUrl('');
+    }
+
+    setAllProbs(p?.all_probs || null);
     setLesions(p?.lesions || []);
-    setLesionSummary(p?.lesionSummary || null);
-    setApiResponse(null);
-    // Clear any stale upload-rejection banner when a verified preset is selected
+    setLesionSummary(p?.lesion_summary || p?.lesionSummary || null);
+    setApiResponse(p?.apiResponse || null);
     setUploadError(null);
   }
 
-  const LEVEL_LABELS = [
-    'No Apparent DR', 'Mild NPDR', 'Moderate NPDR', 'Severe NPDR', 'Proliferative DR',
-  ];
-
-  const handleUpload = async (file) => {
+  const handleUpload = async (file, formMeta = {}) => {
     setUploadError(null);
 
     // Keep snapshot of current valid state to restore if validation fails
@@ -101,6 +161,7 @@ export default function App() {
     const prevApiResponse      = apiResponse;
 
     const localUrl = URL.createObjectURL(file);
+    const thumbPromise = fileToThumbnail(file);
 
     // Do NOT commit unverified file to global state yet; only set screen to qualitycheck
     setScreen('qualitycheck');
@@ -136,9 +197,12 @@ export default function App() {
         return;
       }
 
+      const thumbUrl = await thumbPromise;
+
       // ONLY ON SUCCESS: Commit the new patient & retinal scan into active state
       setApiResponse(data);
-      setUploadedImageUrl(localUrl);
+      const activeImg = thumbUrl || localUrl;
+      setUploadedImageUrl(activeImg);
       const realSev = typeof data.severity === 'number' ? data.severity : 2;
       setSeverity(realSev);
       setHeatmapUrl(data.heatmap_url || '');
@@ -151,26 +215,45 @@ export default function App() {
       setLesions(realLesions);
       setLesionSummary(realSummary);
 
-      setPatient({
-        id: `#DR-${Math.floor(10000 + Math.random() * 90000)}`,
-        name: file.name,
-        fullName: file.name.replace(/\.[^/.]+$/, ''),
-        age: 55,
-        gender: 'M',
-        village: 'Live Scan Intake',
+      const assignedId      = formMeta?.patId || formMeta?.id || `#DR-${Math.floor(10000 + Math.random() * 90000)}`;
+      const assignedName    = formMeta?.name && formMeta.name.trim() !== '' ? formMeta.name : file.name.replace(/\.[^/.]+$/, '');
+      const assignedAge     = formMeta?.age ? parseInt(formMeta.age, 10) : 55;
+      const assignedGender  = formMeta?.gender ? (formMeta.gender.startsWith('F') ? 'F' : 'M') : 'M';
+      const assignedVillage = formMeta?.village || 'PHC Live Intake';
+      const assignedEye     = (formMeta?.eye || selectedEye || 'od').toLowerCase();
+      setSelectedEye(assignedEye);
+
+      const newScannedPatient = {
+        id: assignedId,
+        name: assignedName,
+        fullName: assignedName,
+        age: assignedAge,
+        gender: assignedGender,
+        village: assignedVillage,
+        diabetesDuration: formMeta?.diabetesDuration || '10',
+        hba1c: formMeta?.hba1c || '8.5',
         severity: realSev,
         label: data.label || LEVEL_LABELS[realSev] || `Grade ${realSev}`,
         confidence: data.confidence != null ? data.confidence : null,
         action: data.action || '',
         mode: data.mode || 'real',
-        imageUrl: localUrl,
+        imageUrl: activeImg,
+        thumbnailUrl: activeImg,
         serverImageUrl: data.image_url || '',
         heatmap_url: data.heatmap_url || '',
         all_probs: realProbs,
         lesions: realLesions,
         lesion_summary: realSummary,
         etdrs_profile: data.etdrs_profile || null,
-      });
+        eye: assignedEye,
+        selectedEye: assignedEye,
+        isScanned: true,
+        scannedAt: new Date().toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' }),
+      };
+
+      setPatient(newScannedPatient);
+      // Prepend to accumulating queue and limit to 25 records
+      setScannedPatients(prev => [newScannedPatient, ...prev.filter(p => p.id !== assignedId)].slice(0, 25));
     } catch (err) {
       console.error('Backend upload request failed:', err);
       try { URL.revokeObjectURL(localUrl); } catch (e) {}
@@ -198,43 +281,37 @@ export default function App() {
   if (screen === 'admin')        return <Admin navigate={navigate} />;
 
   // ── Screened with minimal top chrome ────────────────────────────────────
-  return (
-    <div style={{ minHeight: '100vh', background: '#f8fafc', display: 'flex', flexDirection: 'column' }}>
+  const SEV_COLORS = ['#7D8960','#A8A050','#B8863B','#A6552E','#7A2E22'];
+  const sevColor = SEV_COLORS[patient?.severity ?? 2] || SEV_COLORS[2];
+  const SHORT_LABELS = ['G0 · No DR','G1 · Mild','G2 · Moderate','G3 · Severe','G4 · Prolif.'];
 
-      {/* Hospital clinical nav bar for inner screens */}
+  return (
+    <div style={{ minHeight: '100vh', background: '#F4F4E9', display: 'flex', flexDirection: 'column' }}>
+
+      {/* Earthbound Biotech dark top bar */}
       <nav style={{
         position: 'fixed', top: 0, left: 0, right: 0, zIndex: 100,
-        height: 56,
-        background: '#ffffff',
-        borderBottom: '1px solid #e2e8f0',
-        boxShadow: '0 1px 3px rgba(15,23,42,0.05)',
+        height: 48,
+        background: '#25351A',
+        borderBottom: '1px solid rgba(255,255,255,0.07)',
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '0 28px',
+        padding: '0 20px',
+        fontFamily: 'Inter, sans-serif',
       }}>
         {/* Logo */}
         <button onClick={() => navigate('home')} style={{
-          all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 10,
+          all: 'unset', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 8,
         }}>
-          <div style={{
-            width: 32, height: 32, borderRadius: 8,
-            background: 'linear-gradient(135deg, #0284c7, #0369a1)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            boxShadow: '0 2px 6px rgba(2,132,199,0.25)',
-          }}>
-            <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
-              <ellipse cx="9" cy="9" rx="7.5" ry="5" stroke="#ffffff" strokeWidth="1.6"/>
-              <circle cx="9" cy="9" r="2.5" stroke="#ffffff" strokeWidth="1.6"/>
-              <circle cx="9" cy="9" r="1" fill="#ffffff"/>
-            </svg>
-          </div>
-          <div>
-            <span style={{ fontFamily: 'Inter, sans-serif', fontSize: 15, fontWeight: 700, color: '#0f172a', letterSpacing: '-0.01em' }}>RetinaScan XAI</span>
-            <span style={{ display: 'block', fontSize: 10, fontWeight: 600, color: '#0284c7', letterSpacing: '0.04em', textTransform: 'uppercase' }}>Clinical Workstation</span>
-          </div>
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+            <ellipse cx="10" cy="10" rx="8.5" ry="5.5" stroke="#E3EBC9" strokeWidth="1.5"/>
+            <circle cx="10" cy="10" r="2.8" stroke="#E3EBC9" strokeWidth="1.5"/>
+            <circle cx="10" cy="10" r="1.1" fill="#E3EBC9"/>
+          </svg>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#F4F4E9', letterSpacing: '-0.01em' }}>RetinaScan XAI</span>
         </button>
 
-        {/* Nav steps */}
-        <div style={{ display: 'flex', gap: 6, background: '#f1f5f9', padding: '3px 4px', borderRadius: 10, border: '1px solid #e2e8f0' }}>
+        {/* Nav tabs */}
+        <div style={{ display: 'flex', gap: 2 }}>
           {[
             { key: 'upload',   label: t.navIntake },
             { key: 'results',  label: t.navResults },
@@ -244,19 +321,17 @@ export default function App() {
           ].map(({ key, label }) => (
             <button key={key} onClick={() => navigate(key)} style={{
               all: 'unset', cursor: 'pointer',
-              padding: '6px 14px', borderRadius: 7,
-              fontSize: 12, fontWeight: 600,
-              color: screen === key ? '#0284c7' : '#475569',
-              background: screen === key ? '#ffffff' : 'transparent',
-              border: screen === key ? '1px solid #cbd5e1' : '1px solid transparent',
-              boxShadow: screen === key ? '0 1px 3px rgba(15,23,42,0.06)' : 'none',
-              transition: 'all 0.15s ease',
+              padding: '6px 11px', borderRadius: 4,
+              fontSize: 11.5, fontWeight: screen === key ? 700 : 400,
+              color: screen === key ? '#E3EBC9' : 'rgba(244,244,233,0.55)',
+              background: screen === key ? 'rgba(227,235,201,0.14)' : 'transparent',
+              transition: 'all 0.12s ease',
             }}>{label}</button>
           ))}
         </div>
 
-        {/* Right Corner: Always-Present Language Switcher & Patient Quick-Info */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+        {/* Right: Language + Patient chip */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
           <LanguageSwitcher
             currentLang={appLang}
             onChangeLang={code => {
@@ -266,20 +341,21 @@ export default function App() {
           />
 
           {patient?.name && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, fontSize: 12, borderLeft: '1px solid #e2e8f0', paddingLeft: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, borderLeft: '1px solid rgba(255,255,255,0.10)', paddingLeft: 12 }}>
               <div style={{ textAlign: 'right' }}>
-                <div style={{ color: '#0f172a', fontWeight: 600 }}>{patient.fullName || patient.name}</div>
-                <div style={{ color: '#64748b', fontFamily: 'JetBrains Mono, monospace', fontSize: 10 }}>{patient.id}</div>
+                <div style={{ color: '#F4F4E9', fontWeight: 600, fontSize: 11.5 }}>{patient.fullName || patient.name}</div>
+                <div style={{ color: 'rgba(244,244,233,0.5)', fontSize: 9.5, letterSpacing: '0.03em' }}>{patient.id}</div>
               </div>
               {patient.severity != null && (
                 <span style={{
-                  padding: '4px 11px', borderRadius: 20,
-                  background: ['#dcfce7','#fef3c7','#ffedd5','#fee2e2','#fef2f2'][patient.severity] || '#f1f5f9',
-                  border: `1px solid ${['#bbf7d0','#fde68a','#fed7aa','#fecaca','#fca5a5'][patient.severity] || '#e2e8f0'}`,
-                  color: ['#15803d','#b45309','#c2410c','#b91c1c','#991b1b'][patient.severity] || '#475569',
-                  fontSize: 11, fontWeight: 700,
+                  padding: '2px 8px', borderRadius: 4,
+                  background: 'rgba(227,235,201,0.12)',
+                  border: `1px solid ${sevColor}55`,
+                  color: sevColor,
+                  fontSize: 10, fontWeight: 700, letterSpacing: '0.02em',
+                  whiteSpace: 'nowrap',
                 }}>
-                  Level {patient.severity}
+                  {SHORT_LABELS[patient.severity] || `G${patient.severity}`}
                 </span>
               )}
             </div>
@@ -288,7 +364,7 @@ export default function App() {
       </nav>
 
       {/* Screen content */}
-      <div style={{ flex: 1, paddingTop: 56 }}>
+      <div style={{ flex: 1, paddingTop: 48 }}>
         {screen === 'upload' && (
           <Upload
             navigate={navigate}
@@ -324,6 +400,9 @@ export default function App() {
             patient={patient}
             severity={severity}
             selectedEye={selectedEye}
+            scannedPatients={scannedPatients}
+            onSelectPatient={onSelectPatient}
+            clearScannedPatients={clearScannedPatients}
           />
         )}
         {screen === 'canvas' && (

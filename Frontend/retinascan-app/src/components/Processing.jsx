@@ -1,50 +1,20 @@
 import React, { useState, useEffect } from 'react';
 
-const D = {
-  bg:      '#f8fafc',
-  card:    '#ffffff',
-  border:  '#e2e8f0',
-  primary: '#0284c7',
-  success: '#16a34a',
-  text:    '#0f172a',
-  sub:     '#475569',
-  muted:   '#64748b',
-  mono:    'JetBrains Mono, "Courier New", monospace',
+const EB = {
+  forest: '#25351A', ivory: '#F4F4E9', sage: '#7D8960',
+  celery: '#E3EBC9', grayGreen: '#D0D4C2', ink: '#171812', inkMuted: '#858575',
+  hairline: 'rgba(76,61,18,0.15)',
 };
 
 const STEPS = [
-  {
-    key: 'prep',
-    label: 'Image Preprocessing & Normalization',
-    sub: 'Applying CLAHE and Ben Graham filter to enhance contrast of blood vessels and lesions',
-    ms: 800,
-  },
-  {
-    key: 'infer',
-    label: 'ResNet-50 AI Classification',
-    sub: 'Evaluating retinal features across 5 ICDR Diabetic Retinopathy severity levels',
-    ms: 1100,
-  },
-  {
-    key: 'xai',
-    label: 'Grad-CAM++ Saliency & Lesion Mapping',
-    sub: 'Generating visual evidence heatmap and detecting microaneurysms, hemorrhages, and exudates',
-    ms: 800,
-  },
+  { key: 'prep',  label: 'Preprocessing',          sub: 'CLAHE contrast enhancement · Ben Graham filter', ms: 800 },
+  { key: 'infer', label: 'ResNet-50 Classification', sub: 'ICDR grades 0–4 · confidence scoring',           ms: 1100 },
+  { key: 'xai',   label: 'Grad-CAM++ + Lesion Map', sub: 'Heatmap · microaneurysms · hemorrhages · exudates', ms: 800 },
 ];
 
 const KEYFRAMES = `
-  @keyframes spin-loader {
-    to { transform: rotate(360deg); }
-  }
-  @keyframes proc-fade-up {
-    from { opacity: 0; transform: translateY(10px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  @keyframes dot-pulse {
-    0%, 100% { opacity: 0.3; }
-    50%      { opacity: 1; }
-  }
+  @keyframes proc-spin { to { transform: rotate(360deg); } }
+  @keyframes proc-fade-up { from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)} }
 `;
 
 export default function Processing({ navigate, patient }) {
@@ -55,18 +25,14 @@ export default function Processing({ navigate, patient }) {
   const patName = patient?.fullName || patient?.name || 'Assessing Scan';
 
   useEffect(() => {
-    const id = 'proc-kf-light';
+    const id = 'proc-eb-kf';
     if (!document.getElementById(id)) {
-      const s = document.createElement('style');
-      s.id = id;
-      s.textContent = KEYFRAMES;
+      const s = document.createElement('style'); s.id = id; s.textContent = KEYFRAMES;
       document.head.appendChild(s);
     }
-
     let elapsed = 0;
     const totalMs = STEPS.reduce((s, st) => s + st.ms, 0);
     const timers = [];
-
     function advanceStep(i) {
       if (i >= STEPS.length) return;
       setActiveStep(i);
@@ -77,78 +43,49 @@ export default function Processing({ navigate, patient }) {
         advanceStep(i + 1);
       }, STEPS[i].ms));
     }
-
     advanceStep(0);
-
-    const totalDelay = totalMs + 400;
     timers.push(setTimeout(() => {
       setProgress(100);
       setTimeout(() => navigate('results'), 350);
-    }, totalDelay));
-
+    }, totalMs + 400));
     return () => timers.forEach(t => clearTimeout(t));
   }, [navigate]);
 
   return (
-    <div style={{
-      minHeight: '100vh',
-      background: D.bg,
-      color: D.text,
-      fontFamily: 'Inter, system-ui, sans-serif',
-      display: 'flex',
-      flexDirection: 'column',
-    }}>
+    <div style={{ minHeight: '100vh', background: EB.ivory, color: EB.ink, fontFamily: 'Inter, system-ui, sans-serif', display: 'flex', flexDirection: 'column' }}>
+
       {/* Title bar */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 12,
-        padding: '12px 28px',
-        background: '#ffffff',
-        borderBottom: `1px solid ${D.border}`,
-        boxShadow: '0 1px 3px rgba(15,23,42,0.04)',
-        flexShrink: 0,
+        display: 'flex', alignItems: 'center', gap: 10,
+        padding: '9px 24px', background: '#fff', borderBottom: `1px solid ${EB.hairline}`, flexShrink: 0,
       }}>
-        <span style={{
-          width: 9, height: 9, borderRadius: '50%',
-          background: '#0284c7',
-          boxShadow: '0 0 0 3px #e0f2fe',
-        }} />
-        <span style={{ fontSize: 13, fontWeight: 700, color: D.text, letterSpacing: '-0.01em' }}>
-          Diagnostic Inference Engine · RetinaScan-XAI
-        </span>
-        <span style={{ fontSize: 12, color: D.muted }}>
-          Patient: <strong style={{ color: D.text }}>{patName}</strong>
-        </span>
+        <span style={{ width: 8, height: 8, borderRadius: '50%', background: EB.forest, boxShadow: `0 0 0 3px ${EB.celery}` }} />
+        <span style={{ fontSize: 12.5, fontWeight: 700, color: EB.ink }}>AI Diagnostic Engine</span>
+        <span style={{ fontSize: 11.5, color: EB.inkMuted }}>Patient: <strong style={{ color: EB.ink }}>{patName}</strong></span>
       </div>
 
-      {/* Center content */}
-      <div style={{
-        flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center',
-        padding: '32px 20px',
-        animation: 'proc-fade-up 0.3s ease both',
-      }}>
+      {/* Center */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: '28px 20px', animation: 'proc-fade-up 0.3s ease both' }}>
         <div style={{
-          width: '100%', maxWidth: 580,
-          background: D.card,
-          border: `1px solid ${D.border}`,
-          borderRadius: 16,
-          boxShadow: '0 4px 20px rgba(15,23,42,0.05), 0 1px 3px rgba(15,23,42,0.04)',
-          padding: '36px 36px 32px',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 32,
+          width: '100%', maxWidth: 520,
+          background: '#fff', border: `1px solid ${EB.hairline}`,
+          borderRadius: 10, boxShadow: '0 4px 20px rgba(23,24,18,0.07)',
+          padding: '30px 30px 26px',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 26,
         }}>
 
-          {/* Clean Medical Circular Progress */}
-          <div style={{ position: 'relative', width: 110, height: 110 }}>
-            <svg width="110" height="110" viewBox="0 0 110 110">
-              <circle cx="55" cy="55" r="46" stroke="#f1f5f9" strokeWidth="8" fill="none" />
+          {/* Circular progress */}
+          <div style={{ position: 'relative', width: 96, height: 96 }}>
+            <svg width="96" height="96" viewBox="0 0 96 96">
+              <circle cx="48" cy="48" r="40" stroke={EB.grayGreen} strokeWidth="7" fill="none"/>
               <circle
-                cx="55" cy="55" r="46"
-                stroke={D.primary}
-                strokeWidth="8"
-                fill="none"
-                strokeDasharray="289"
-                strokeDashoffset={289 - (289 * progress) / 100}
+                cx="48" cy="48" r="40"
+                stroke={EB.forest}
+                strokeWidth="7" fill="none"
+                strokeDasharray="251"
+                strokeDashoffset={251 - (251 * progress) / 100}
                 strokeLinecap="round"
-                transform="rotate(-90 55 55)"
+                transform="rotate(-90 48 48)"
                 style={{ transition: 'stroke-dashoffset 0.2s ease' }}
               />
             </svg>
@@ -156,58 +93,48 @@ export default function Processing({ navigate, patient }) {
               position: 'absolute', inset: 0,
               display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
             }}>
-              <span style={{ fontSize: 24, fontWeight: 800, color: D.text, lineHeight: 1 }}>{progress}%</span>
-              <span style={{ fontSize: 10, fontWeight: 600, color: D.muted, marginTop: 4, letterSpacing: '0.04em' }}>ANALYSING</span>
+              <span style={{ fontSize: 22, fontWeight: 800, color: EB.ink, lineHeight: 1 }}>{progress}%</span>
+              <span style={{ fontSize: 9, fontWeight: 700, color: EB.inkMuted, letterSpacing: '0.06em', marginTop: 3 }}>ANALYSING</span>
             </div>
           </div>
 
-          <div style={{ textAlign: 'center', maxWidth: 440 }}>
-            <h2 style={{ margin: '0 0 6px', fontSize: 19, fontWeight: 800, color: D.text }}>
-              Running Explainable Diagnostic Analysis
-            </h2>
-            <p style={{ margin: 0, fontSize: 13, color: D.sub }}>
-              The multi-stage pipeline is classifying diabetic retinopathy severity and localizing microscopic vascular lesions.
-            </p>
+          <div style={{ textAlign: 'center' }}>
+            <h2 style={{ margin: '0 0 4px', fontSize: 16, fontWeight: 700, color: EB.ink }}>Running AI Analysis</h2>
+            <p style={{ margin: 0, fontSize: 11.5, color: EB.inkMuted }}>Classification · Grad-CAM++ · lesion detection</p>
           </div>
 
-          {/* Checklist steps */}
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 12 }}>
+          {/* Steps */}
+          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: 8 }}>
             {STEPS.map((step, idx) => {
-              const isDone   = doneSteps.includes(idx);
-              const isActive = activeStep === idx && !isDone;
-
+              const isDone = doneSteps.includes(idx);
+              const isAct  = activeStep === idx && !isDone;
               return (
                 <div key={step.key} style={{
-                  display: 'flex', alignItems: 'flex-start', gap: 14,
-                  padding: '14px 16px', borderRadius: 10,
-                  background: isDone ? '#f0fdf4' : isActive ? '#f0f9ff' : '#f8fafc',
-                  border: `1px solid ${isDone ? '#bbf7d0' : isActive ? '#bae6fd' : D.border}`,
-                  transition: 'all 0.25s',
+                  display: 'flex', alignItems: 'flex-start', gap: 12,
+                  padding: '11px 14px', borderRadius: 7,
+                  background: isDone ? EB.celery : isAct ? 'rgba(37,53,26,0.04)' : '#fafaf8',
+                  border: `1px solid ${isDone ? EB.sage + '55' : EB.hairline}`,
+                  transition: 'all 0.22s',
                 }}>
                   <div style={{
-                    width: 22, height: 22, borderRadius: '50%', flexShrink: 0, marginTop: 1,
+                    width: 20, height: 20, borderRadius: '50%', flexShrink: 0, marginTop: 1,
                     display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    background: isDone ? D.success : isActive ? D.primary : '#e2e8f0',
-                    color: '#ffffff', fontSize: 11, fontWeight: 800,
+                    background: isDone ? EB.sage : isAct ? EB.forest : EB.grayGreen,
+                    color: '#fff', fontSize: 10, fontWeight: 800,
+                    animation: isAct ? 'proc-spin 1.2s linear infinite' : 'none',
                   }}>
-                    {isDone ? '✓' : isActive ? '⟳' : idx + 1}
+                    {isDone ? '✓' : idx + 1}
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: isDone ? D.text : isActive ? D.primary : D.sub }}>
-                      {step.label}
-                    </div>
-                    <div style={{ fontSize: 11, color: D.muted, marginTop: 2, lineHeight: 1.4 }}>
-                      {step.sub}
-                    </div>
+                  <div>
+                    <div style={{ fontSize: 12.5, fontWeight: 700, color: EB.ink }}>{step.label}</div>
+                    <div style={{ fontSize: 11, color: EB.inkMuted, marginTop: 2 }}>{step.sub}</div>
                   </div>
                 </div>
               );
             })}
           </div>
 
-          <div style={{ fontSize: 11, color: D.muted, textAlign: 'center' }}>
-            Model: ResNet-50 v2 (Cross-validated on APTOS + MESSIDOR-2, 93.3% Sensitivity)
-          </div>
+          <div style={{ fontSize: 10.5, color: EB.inkMuted }}>ResNet-50 · APTOS + MESSIDOR-2 · 93.3% sensitivity</div>
         </div>
       </div>
     </div>

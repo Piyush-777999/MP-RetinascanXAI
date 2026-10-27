@@ -1,37 +1,58 @@
 import React, { useState } from 'react';
 import { demoPresets } from '../data.js';
 
-const SEV_CONFIG = {
-  0: { label: 'Grade 0: No DR',        color: '#15803d', bg: '#dcfce7', border: '#bbf7d0', action: 'Annual screening recall' },
-  1: { label: 'Grade 1: Mild NPDR',     color: '#b45309', bg: '#fef3c7', border: '#fde68a', action: 'Review in 6–12 months' },
-  2: { label: 'Grade 2: Moderate NPDR', color: '#c2410c', bg: '#ffedd5', border: '#fed7aa', action: 'Specialist triage required' },
-  3: { label: 'Grade 3: Severe NPDR',   color: '#b91c1c', bg: '#fee2e2', border: '#fecaca', action: 'Urgent specialist referral' },
-  4: { label: 'Grade 4: Proliferative', color: '#991b1b', bg: '#fef2f2', border: '#fca5a5', action: 'Emergency laser / surgery review' },
+const EB = {
+  forest: '#25351A', olive: '#4C3D12', ivory: '#F4F4E9', sage: '#7D8960',
+  celery: '#E3EBC9', grayGreen: '#D0D4C2', ink: '#171812', inkMuted: '#858575',
+  hairline: 'rgba(76,61,18,0.15)',
 };
 
-export default function Queue({ navigate, patient, severity = 2, selectedEye = 'od' }) {
+const SEV = [
+  { color: '#7D8960', bg: 'rgba(125,137,96,0.12)', border: 'rgba(125,137,96,0.30)', label: 'G0 · No DR',       action: 'Annual recall' },
+  { color: '#A8A050', bg: 'rgba(168,160,80,0.12)', border: 'rgba(168,160,80,0.30)', label: 'G1 · Mild',        action: '6–12 month review' },
+  { color: '#B8863B', bg: 'rgba(184,134,59,0.12)', border: 'rgba(184,134,59,0.30)', label: 'G2 · Moderate',    action: 'Specialist triage' },
+  { color: '#A6552E', bg: 'rgba(166,85,46,0.12)',  border: 'rgba(166,85,46,0.30)',  label: 'G3 · Severe',      action: 'Urgent referral' },
+  { color: '#7A2E22', bg: 'rgba(122,46,34,0.12)',  border: 'rgba(122,46,34,0.30)',  label: 'G4 · Prolif.',     action: 'Emergency review' },
+];
+
+export default function Queue({
+  navigate,
+  patient,
+  severity = 2,
+  selectedEye = 'od',
+  scannedPatients = [],
+  onSelectPatient,
+  clearScannedPatients,
+}) {
   const [activeTab, setActiveTab] = useState('all');
 
-  const currentPatient = {
-    id: patient?.id || 'DR-88969',
-    name: patient?.fullName || patient?.name || 'Smt. Geeta Sharma',
-    age: patient?.age || 58,
-    gender: patient?.gender || 'F',
-    location: patient?.village || 'Alwar Mobile Camp',
-    sev: severity ?? patient?.severity ?? 2,
-    conf: patient?.confidence ? `${patient.confidence}%` : '96.4%',
-    eye: (selectedEye || 'OD').toUpperCase(),
-    status: (severity ?? patient?.severity ?? 2) >= 2 ? 'Needs Referral' : 'Routine Complete',
-    isCurrent: true,
-  };
+  const scannedList = (scannedPatients || []).map(p => {
+    const isCurr = p.id === patient?.id || (p.id && p.id.replace('#', '') === patient?.id?.replace('#', ''));
+    return {
+      id: p.id ? p.id.replace('#', '') : 'DR-SCAN',
+      rawId: p.id,
+      name: p.fullName || p.name || 'Scanned Patient',
+      age: p.age || 55,
+      gender: p.gender || 'M',
+      location: p.village || 'PHC Live Intake',
+      sev: p.severity ?? 2,
+      conf: p.confidence != null ? `${p.confidence}%` : '96.4%',
+      eye: (p.eye || p.selectedEye || selectedEye || 'OD').toUpperCase(),
+      status: (p.severity ?? 2) >= 2 ? 'Referral' : 'Routine',
+      isCurrent: isCurr,
+      isScanned: true,
+      scannedAt: p.scannedAt || 'Today',
+      rawPatient: p,
+    };
+  });
 
-  const queuePatients = [
-    currentPatient,
-    // Pull the other 3 demo patients (skip the currently active one to avoid duplicate ID)
-    ...demoPresets
-      .filter(p => p.id !== currentPatient.id)
-      .map(p => ({
+  const presetList = demoPresets
+    .filter(p => !scannedList.some(s => s.id === p.id.replace('#', '')))
+    .map(p => {
+      const isCurr = p.id === patient?.id || p.id.replace('#', '') === patient?.id?.replace('#', '');
+      return {
         id: p.id.replace('#', ''),
+        rawId: p.id,
         name: p.fullName || p.name,
         age: p.age,
         gender: p.gender,
@@ -39,195 +60,200 @@ export default function Queue({ navigate, patient, severity = 2, selectedEye = '
         sev: p.severity,
         conf: `${p.confidence}%`,
         eye: 'OD',
-        status: p.severity >= 2 ? 'Needs Referral' : 'Routine Complete',
-      })),
-  ];
+        status: p.severity >= 2 ? 'Referral' : 'Routine',
+        isCurrent: isCurr,
+        isScanned: false,
+        rawPatient: p,
+      };
+    });
 
-  const filteredPatients = queuePatients.filter(p => {
+  // Ensure current active patient is in the list even if not in scannedList or presetList
+  let queuePatients = [...scannedList, ...presetList];
+  const hasCurrent = queuePatients.some(p => p.isCurrent);
+  if (!hasCurrent && patient) {
+    const curr = {
+      id: patient?.id ? patient.id.replace('#', '') : 'DR-ACTIVE',
+      rawId: patient?.id,
+      name: patient?.fullName || patient?.name || 'Active Patient',
+      age: patient?.age || 55,
+      gender: patient?.gender || 'M',
+      location: patient?.village || 'PHC Live Intake',
+      sev: severity ?? patient?.severity ?? 2,
+      conf: patient?.confidence != null ? `${patient.confidence}%` : '96.4%',
+      eye: (selectedEye || patient?.eye || 'OD').toUpperCase(),
+      status: (severity ?? patient?.severity ?? 2) >= 2 ? 'Referral' : 'Routine',
+      isCurrent: true,
+      isScanned: !!patient?.isScanned,
+      rawPatient: patient,
+    };
+    queuePatients.unshift(curr);
+  }
+
+  const filtered = queuePatients.filter(p => {
     if (activeTab === 'referral') return p.sev >= 2;
-    if (activeTab === 'routine') return p.sev < 2;
+    if (activeTab === 'routine')  return p.sev < 2;
     return true;
   });
 
   return (
-    <main style={{
-      minHeight: '100vh',
-      background: '#f8fafc',
-      color: '#0f172a',
-      fontFamily: 'Inter, system-ui, -apple-system, sans-serif',
-      padding: '28px 32px 60px',
-    }}>
-      <div style={{ maxWidth: 1240, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 24 }}>
+    <main style={{ minHeight: '100vh', background: EB.ivory, color: EB.ink, fontFamily: 'Inter, system-ui, sans-serif', padding: '22px 28px 60px' }}>
+      <div style={{ maxWidth: 1200, margin: '0 auto', display: 'flex', flexDirection: 'column', gap: 18 }}>
 
-        {/* Top Header & Breadcrumb */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
-          <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 4 }}>
+        {/* Header */}
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+            <button onClick={() => navigate('results')} style={{
+              all: 'unset', cursor: 'pointer',
+              padding: '5px 11px', borderRadius: 5,
+              background: '#fff', border: `1px solid ${EB.hairline}`,
+              color: EB.inkMuted, fontSize: 11.5, fontWeight: 600,
+            }}>← Results</button>
+            <h1 style={{ fontSize: 17, fontWeight: 700, color: EB.ink, margin: 0 }}>Triage Queue</h1>
+            {scannedList.length > 0 && (
+              <span style={{
+                fontSize: 11, background: EB.celery, color: EB.forest,
+                padding: '2px 8px', borderRadius: 4, border: `1px solid ${EB.sage}44`, fontWeight: 600,
+              }}>
+                {scannedList.length} stored locally
+              </span>
+            )}
+          </div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            {scannedList.length > 0 && clearScannedPatients && (
               <button
-                onClick={() => navigate('results')}
+                onClick={() => {
+                  if (window.confirm('Clear all locally saved scan records?')) {
+                    clearScannedPatients();
+                  }
+                }}
                 style={{
                   all: 'unset', cursor: 'pointer',
-                  display: 'inline-flex', alignItems: 'center', gap: 6,
-                  padding: '6px 12px', borderRadius: 8,
-                  background: '#ffffff', border: '1px solid #cbd5e1',
-                  color: '#475569', fontSize: 12, fontWeight: 600,
-                  boxShadow: '0 1px 2px rgba(15,23,42,0.04)',
+                  padding: '7px 12px', borderRadius: 5,
+                  background: '#fff', border: '1px solid rgba(122,46,34,0.3)',
+                  color: '#7A2E22', fontSize: 11.5, fontWeight: 600,
                 }}
               >
-                ← Back to Results
+                🗑 Clear History
               </button>
-              <h1 style={{ fontSize: 20, fontWeight: 800, color: '#0f172a', margin: 0 }}>
-                Clinical Triage Worklist
-              </h1>
-            </div>
-            <p style={{ fontSize: 13, color: '#64748b', margin: 0 }}>
-              Primary care tele-ophthalmology screening review & referral management
-            </p>
-          </div>
-
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button
-              onClick={() => navigate('referral')}
-              style={{
-                all: 'unset', cursor: 'pointer',
-                display: 'inline-flex', alignItems: 'center', gap: 6,
-                padding: '9px 18px', borderRadius: 8,
-                background: '#0284c7', color: '#ffffff',
-                fontSize: 13, fontWeight: 600,
-                boxShadow: '0 2px 6px rgba(2,132,199,0.2)',
-              }}
-            >
-              📄 Print Referral Slip
-            </button>
+            )}
+            <button onClick={() => navigate('referral')} style={{
+              all: 'unset', cursor: 'pointer',
+              padding: '8px 16px', borderRadius: 5,
+              background: EB.forest, color: EB.ivory,
+              fontSize: 12, fontWeight: 700,
+            }}>📄 Referral Slip</button>
           </div>
         </div>
 
-        {/* Clinical Operations Banner */}
-        <div style={{
-          display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))', gap: 16,
-        }}>
+        {/* Stats strip */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 10 }}>
           {[
-            { label: 'Screened Today', val: queuePatients.length, desc: 'Registered patients' },
-            { label: 'Requires Specialist', val: queuePatients.filter(p => p.sev >= 2).length, desc: 'Grade 2, 3, or 4 cases', alert: true },
-            { label: 'Inference Speed', val: '140 ms', desc: 'ResNet-50 v2 inference' },
-            { label: 'Tele-Triage SLA', val: '< 30 Mins', desc: 'Surgical/laser triage goal' },
-          ].map(m => (
-            <div key={m.label} style={{
-              background: '#ffffff', borderRadius: 12, padding: '16px 20px',
-              border: `1px solid ${m.alert ? '#fed7aa' : '#e2e8f0'}`,
-              boxShadow: '0 1px 3px rgba(15,23,42,0.03)',
-            }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: m.alert ? '#c2410c' : '#64748b', marginBottom: 4 }}>
-                {m.label}
-              </div>
-              <div style={{ fontSize: 22, fontWeight: 800, color: m.alert ? '#ea580c' : '#0f172a', marginBottom: 2 }}>
-                {m.val}
-              </div>
-              <div style={{ fontSize: 11, color: '#64748b' }}>{m.desc}</div>
+            { label: 'Total', val: queuePatients.length,                          sub: 'in worklist' },
+            { label: 'Referral', val: queuePatients.filter(p => p.sev >= 2).length, sub: 'grade ≥ 2' },
+            { label: 'Saved Scans', val: scannedList.length,                       sub: 'offline local' },
+            { label: 'SLA Target', val: '< 30 min',                               sub: 'triage SLA' },
+          ].map((m, i) => (
+            <div key={i} style={{ background: '#fff', border: `1px solid ${EB.hairline}`, borderRadius: 6, padding: '12px 16px', boxShadow: '0 1px 3px rgba(23,24,18,0.04)' }}>
+              <div style={{ fontSize: 9.5, fontWeight: 700, color: EB.inkMuted, textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 5 }}>{m.label}</div>
+              <div style={{ fontSize: 22, fontWeight: 900, color: EB.ink, lineHeight: 1 }}>{m.val}</div>
+              <div style={{ fontSize: 11, color: EB.inkMuted, marginTop: 3 }}>{m.sub}</div>
             </div>
           ))}
         </div>
 
-        {/* Filter Tabs */}
-        <div style={{
-          display: 'flex', gap: 8, borderBottom: '1px solid #e2e8f0', paddingBottom: 12,
-        }}>
+        {/* Filter tabs */}
+        <div style={{ display: 'flex', gap: 6, borderBottom: `1px solid ${EB.hairline}`, paddingBottom: 10 }}>
           {[
-            { key: 'all', label: `All Screened Patients (${queuePatients.length})` },
-            { key: 'referral', label: `Needs Specialist Referral (${queuePatients.filter(p => p.sev >= 2).length})` },
-            { key: 'routine', label: `Routine / Mild (${queuePatients.filter(p => p.sev < 2).length})` },
+            { key: 'all',      label: `All (${queuePatients.length})` },
+            { key: 'referral', label: `Referral (${queuePatients.filter(p => p.sev >= 2).length})` },
+            { key: 'routine',  label: `Routine (${queuePatients.filter(p => p.sev < 2).length})` },
           ].map(t => (
-            <button
-              key={t.key}
-              onClick={() => setActiveTab(t.key)}
-              style={{
-                all: 'unset', cursor: 'pointer',
-                padding: '8px 16px', borderRadius: 8,
-                fontSize: 13, fontWeight: 600,
-                color: activeTab === t.key ? '#0284c7' : '#64748b',
-                background: activeTab === t.key ? '#f0f9ff' : 'transparent',
-                border: activeTab === t.key ? '1px solid #bae6fd' : '1px solid transparent',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              {t.label}
-            </button>
+            <button key={t.key} onClick={() => setActiveTab(t.key)} style={{
+              all: 'unset', cursor: 'pointer',
+              padding: '6px 14px', borderRadius: 5,
+              fontSize: 12, fontWeight: 600,
+              color: activeTab === t.key ? EB.forest : EB.inkMuted,
+              background: activeTab === t.key ? EB.celery : 'transparent',
+              border: `1px solid ${activeTab === t.key ? EB.sage + '66' : 'transparent'}`,
+              transition: 'all 0.13s ease',
+            }}>{t.label}</button>
           ))}
         </div>
 
-        {/* Patients Table Card */}
-        <div style={{
-          background: '#ffffff', borderRadius: 14, border: '1px solid #e2e8f0',
-          boxShadow: '0 1px 4px rgba(15,23,42,0.03)', overflow: 'hidden',
-        }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left', fontSize: 13 }}>
+        {/* Table */}
+        <div style={{ background: '#fff', border: `1px solid ${EB.hairline}`, borderRadius: 8, overflow: 'hidden', boxShadow: '0 1px 4px rgba(23,24,18,0.04)' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12.5 }}>
             <thead>
-              <tr style={{ background: '#f8fafc', borderBottom: '1px solid #e2e8f0', color: '#64748b', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                <th style={{ padding: '14px 20px' }}>Patient & ID</th>
-                <th style={{ padding: '14px 16px' }}>Demographics</th>
-                <th style={{ padding: '14px 16px' }}>Clinic / Camp</th>
-                <th style={{ padding: '14px 16px' }}>ICDR Grade</th>
-                <th style={{ padding: '14px 16px' }}>AI Confidence</th>
-                <th style={{ padding: '14px 16px' }}>Action Protocol</th>
-                <th style={{ padding: '14px 20px', textAlign: 'right' }}>Actions</th>
+              <tr style={{ background: EB.ivory, borderBottom: `1px solid ${EB.hairline}`, color: EB.inkMuted, fontSize: 10.5, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                <th style={{ padding: '11px 18px', textAlign: 'left' }}>Patient</th>
+                <th style={{ padding: '11px 14px', textAlign: 'left' }}>Demographics</th>
+                <th style={{ padding: '11px 14px', textAlign: 'left' }}>Location</th>
+                <th style={{ padding: '11px 14px', textAlign: 'left' }}>Grade</th>
+                <th style={{ padding: '11px 14px', textAlign: 'left' }}>Conf.</th>
+                <th style={{ padding: '11px 14px', textAlign: 'left' }}>Protocol</th>
+                <th style={{ padding: '11px 18px', textAlign: 'right' }}>Actions</th>
               </tr>
             </thead>
             <tbody>
-              {filteredPatients.map((p, idx) => {
-                const conf = SEV_CONFIG[p.sev] || SEV_CONFIG[2];
+              {filtered.map((p, idx) => {
+                const cfg = SEV[p.sev] || SEV[2];
                 return (
-                  <tr key={p.id} style={{
-                    borderBottom: idx < filteredPatients.length - 1 ? '1px solid #f1f5f9' : 'none',
-                    background: p.isCurrent ? '#f0f9ff' : 'transparent',
-                    transition: 'background 0.15s',
+                  <tr key={`${p.id}-${idx}`} style={{
+                    borderBottom: idx < filtered.length - 1 ? `1px solid ${EB.hairline}` : 'none',
+                    background: p.isCurrent ? EB.celery + '66' : 'transparent',
                   }}>
-                    <td style={{ padding: '16px 20px' }}>
-                      <div style={{ fontWeight: 700, color: '#0f172a' }}>{p.name}</div>
-                      <div style={{ fontSize: 11, color: '#64748b', fontFamily: 'JetBrains Mono, monospace' }}>
-                        {p.id} {p.isCurrent && <span style={{ color: '#0284c7', fontWeight: 600 }}>• Active Scan</span>}
+                    <td style={{ padding: '13px 18px' }}>
+                      <div style={{ fontWeight: 700, color: EB.ink, display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span>{p.name}</span>
+                        {p.isScanned && (
+                          <span style={{
+                            fontSize: 9, fontWeight: 700, padding: '1px 5px', borderRadius: 3,
+                            background: EB.celery, color: EB.forest, border: `1px solid ${EB.sage}55`,
+                          }}>
+                            Local Scan
+                          </span>
+                        )}
+                      </div>
+                      <div style={{ fontSize: 10, color: EB.inkMuted, fontFamily: 'monospace', marginTop: 1 }}>
+                        {p.id}{p.isCurrent && <span style={{ color: EB.sage, fontWeight: 700 }}> · Active</span>}
                       </div>
                     </td>
-                    <td style={{ padding: '16px 16px', color: '#475569' }}>
-                      {p.age}Y • {p.gender === 'M' ? 'Male' : 'Female'}
-                    </td>
-                    <td style={{ padding: '16px 16px', color: '#475569' }}>
-                      {p.location}
-                    </td>
-                    <td style={{ padding: '16px 16px' }}>
-                      <span style={{
-                        display: 'inline-block', padding: '4px 10px', borderRadius: 6,
-                        background: conf.bg, color: conf.color, border: `1px solid ${conf.border}`,
-                        fontSize: 11, fontWeight: 700,
-                      }}>
-                        {conf.label}
+                    <td style={{ padding: '13px 14px', color: EB.inkMuted }}>{p.age}Y · {p.gender === 'M' ? 'M' : 'F'} · {p.eye}</td>
+                    <td style={{ padding: '13px 14px', color: EB.inkMuted }}>{p.location}</td>
+                    <td style={{ padding: '13px 14px' }}>
+                      <span style={{ display: 'inline-block', padding: '3px 8px', borderRadius: 4, background: cfg.bg, color: cfg.color, border: `1px solid ${cfg.border}`, fontSize: 10.5, fontWeight: 700 }}>
+                        {cfg.label}
                       </span>
                     </td>
-                    <td style={{ padding: '16px 16px', fontWeight: 700, color: '#0f172a' }}>
-                      {p.conf}
-                    </td>
-                    <td style={{ padding: '16px 16px', color: '#475569', fontSize: 12 }}>
-                      {conf.action}
-                    </td>
-                    <td style={{ padding: '16px 20px', textAlign: 'right' }}>
-                      <div style={{ display: 'inline-flex', gap: 8 }}>
+                    <td style={{ padding: '13px 14px', fontWeight: 700, color: EB.ink }}>{p.conf}</td>
+                    <td style={{ padding: '13px 14px', color: EB.inkMuted, fontSize: 11.5 }}>{cfg.action}</td>
+                    <td style={{ padding: '13px 18px', textAlign: 'right' }}>
+                      <div style={{ display: 'inline-flex', gap: 6 }}>
                         <button
-                          onClick={() => navigate('results')}
+                          onClick={() => {
+                            if (onSelectPatient) onSelectPatient(p.rawPatient || p);
+                            navigate('results');
+                          }}
                           style={{
                             all: 'unset', cursor: 'pointer',
-                            padding: '6px 12px', borderRadius: 6,
-                            background: '#ffffff', border: '1px solid #cbd5e1',
-                            color: '#0284c7', fontSize: 12, fontWeight: 600,
+                            padding: '5px 11px', borderRadius: 5,
+                            background: '#fff', border: `1px solid ${EB.hairline}`,
+                            color: EB.forest, fontSize: 11.5, fontWeight: 700,
+                            boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
                           }}
                         >
-                          View Results
+                          Results
                         </button>
                         <button
-                          onClick={() => navigate('referral')}
+                          onClick={() => {
+                            if (onSelectPatient) onSelectPatient(p.rawPatient || p);
+                            navigate('referral');
+                          }}
                           style={{
                             all: 'unset', cursor: 'pointer',
-                            padding: '6px 12px', borderRadius: 6,
-                            background: '#f8fafc', border: '1px solid #cbd5e1',
-                            color: '#475569', fontSize: 12, fontWeight: 600,
+                            padding: '5px 11px', borderRadius: 5,
+                            background: EB.ivory, border: `1px solid ${EB.hairline}`,
+                            color: EB.inkMuted, fontSize: 11.5, fontWeight: 600,
                           }}
                         >
                           Slip
@@ -240,7 +266,6 @@ export default function Queue({ navigate, patient, severity = 2, selectedEye = '
             </tbody>
           </table>
         </div>
-
       </div>
     </main>
   );
