@@ -360,6 +360,7 @@ export default function Results({
   const [heatmapError, setHeatmapError] = useState(false);
   const [filterType,   setFilterType]   = useState('all');
   const [imgAspect,    setImgAspect]    = useState(1);
+  const imgRef = useRef(null);
 
   const imgBounds = useMemo(() => {
     if (imgAspect > 1.01) {
@@ -575,16 +576,16 @@ export default function Results({
   }, [activeLesions]);
 
   const typeCounts = useMemo(() => {
-    const counts = { all: lesions.length, microaneurysm: 0, hemorrhage: 0, hardExudate: 0, other: 0 };
-    lesions.forEach(l => {
+    const counts = { all: activeLesions.length, microaneurysm: 0, hemorrhage: 0, hardExudate: 0, other: 0 };
+    activeLesions.forEach(l => {
       if (counts[l.type] !== undefined) counts[l.type]++;
       else counts.other++;
     });
     return counts;
-  }, [lesions]);
+  }, [activeLesions]);
 
   const filteredLesions = useMemo(() => {
-    let list = lesions;
+    let list = activeLesions;
     if (filterType !== 'all') {
       list = list.filter(l => l.type === filterType);
     }
@@ -592,7 +593,7 @@ export default function Results({
       list = list.filter(l => l.etdrsSector === selectedEtdrsSector);
     }
     return list;
-  }, [lesions, filterType, selectedEtdrsSector]);
+  }, [activeLesions, filterType, selectedEtdrsSector]);
 
   const probs = useMemo(() => {
     const raw = allProbs || patient?.all_probs;
@@ -617,6 +618,12 @@ export default function Results({
     }
     return fundusPath;
   }, [counterfactualResult, laserDisplayMode, fundusPath]);
+
+  useEffect(() => {
+    if (imgRef.current && imgRef.current.complete && imgRef.current.naturalWidth && imgRef.current.naturalHeight) {
+      setImgAspect(imgRef.current.naturalWidth / imgRef.current.naturalHeight);
+    }
+  }, [currentFundusPath]);
 
   const currentHeatmapPath = useMemo(() => {
     if (counterfactualResult) {
@@ -1442,8 +1449,8 @@ export default function Results({
               onMouseLeave={handlePanEnd}
               style={{
                 position: 'relative',
-                width: 'min(520px, calc(100% - 16px), calc(100vh - 200px))',
-                height: 'min(520px, calc(100% - 16px), calc(100vh - 200px))',
+                width: 'min(520px, calc(100% - 24px), calc(100vh - 220px))',
+                maxWidth: 'calc(100vh - 220px)',
                 aspectRatio: '1 / 1',
                 borderRadius: '50%',
                 overflow: 'hidden',
@@ -1481,6 +1488,7 @@ export default function Results({
                   </div>
                 ) : (
                   <img
+                    ref={imgRef}
                     src={currentFundusPath}
                     alt={`Retina Grade ${sev}`}
                     onLoad={(e) => {

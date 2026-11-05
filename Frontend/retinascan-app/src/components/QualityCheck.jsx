@@ -57,7 +57,8 @@ export default function QualityCheck({ navigate, patient }) {
       setTimeout(() => navigate('processing'), 700);
     }, TOTAL_MS));
     return () => timers.forEach(t => clearTimeout(t));
-  }, [navigate]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [navigate, patient]);
 
   return (
     <div style={{ minHeight: '100vh', background: EB.ivory, color: EB.ink, fontFamily: 'Inter, system-ui, sans-serif', display: 'flex', flexDirection: 'column' }}>

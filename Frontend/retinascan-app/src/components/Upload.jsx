@@ -59,14 +59,16 @@ function Field({ label, value, onChange, type = 'text', readOnly = false, unit, 
 }
 
 export default function Upload({ navigate, onSelectPatient, handleUpload, uploadError, clearUploadError }) {
-  const [selectedPatient, setSelectedPatient] = useState(demoPresets[2]);
+  // Guard against demoPresets having fewer entries than expected
+  const defaultPreset = demoPresets[2] ?? demoPresets[1] ?? demoPresets[0] ?? {};
+  const [selectedPatient, setSelectedPatient] = useState(defaultPreset);
   const [patId] = useState(genId());
   const [form, setForm] = useState({
-    name: demoPresets[2].fullName || demoPresets[2].name,
-    age: String(demoPresets[2].age),
+    name: defaultPreset.fullName || defaultPreset.name || '',
+    age: String(defaultPreset.age || ''),
     gender: 'Female',
-    diabetesDuration: String(demoPresets[2].diabetesDuration || '12'),
-    hba1c: String(demoPresets[2].hba1c || '9.1'),
+    diabetesDuration: String(defaultPreset.diabetesDuration || '12'),
+    hba1c: String(defaultPreset.hba1c || '9.1'),
     eye: 'od',
   });
   const [dragOver, setDragOver] = useState(false);
@@ -247,7 +249,7 @@ export default function Upload({ navigate, onSelectPatient, handleUpload, upload
                   {/* Info */}
                   <div style={{ flex: 1, textAlign: 'left' }}>
                     <div style={{ fontSize: 13, fontWeight: 700, color: EB.ink }}>{p.fullName || p.name}</div>
-                    <div style={{ fontSize: 10.5, color: EB.inkMuted, marginTop: 1 }}>{p.age}Y · {p.gender === 'F' ? 'F' : 'M'} · {p.village}</div>
+                    <div style={{ fontSize: 10.5, color: EB.inkMuted, marginTop: 1 }}>{p.age}Y · {p.gender === 'F' || p.gender === 'Female' ? 'F' : 'M'} · {p.village}</div>
                     <div style={{
                       display: 'inline-block', marginTop: 5,
                       fontSize: 9.5, fontWeight: 700, padding: '2px 7px', borderRadius: 4,

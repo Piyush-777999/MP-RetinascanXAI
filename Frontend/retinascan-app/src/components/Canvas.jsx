@@ -33,7 +33,7 @@ const GRADE_LABELS = [
 const LEGEND_TYPES = [
   { type: 'neovascular',   label: 'Neovascularization', color: '#ec4899' },
   { type: 'hemorrhage',    label: 'Hemorrhage',          color: '#ef4444' },
-  { type: 'hardExudate',   label: 'Hard Exudate',        color: '#00d4aa' },
+  { type: 'hardExudate',   label: 'Hard Exudate',        color: '#eab308' },
   { type: 'microaneurysm', label: 'Microaneurysm',       color: '#eab308' },
   { type: 'cottonWool',    label: 'Cotton Wool Spot',    color: '#a855f7' },
 ];
@@ -209,6 +209,15 @@ export default function Canvas({
     }
   }, [hoveredId]);
 
+  // Reset zoom and view toggles when patient changes
+  useEffect(() => {
+    setZoom(100);
+    setShowHeatmap(true);
+    setShowPins(true);
+    setShowRedFree(false);
+    setImgAspect(1);
+  }, [patient?.id]);
+
   // Inject keyframe animations once
   useEffect(() => {
     const id = 'canvas-keyframes';
@@ -359,9 +368,7 @@ export default function Canvas({
               <button onClick={() => setZoom(z => Math.max(50, z - 25))} style={iconBtnStyle}>−</button>
               <span style={{ fontFamily: D.mono, fontSize: 10, color: D.teal, minWidth: 40, textAlign: 'center' }}>{zoom}%</span>
               <button onClick={() => setZoom(z => Math.min(200, z + 25))} style={iconBtnStyle}>+</button>
-            </div>
-
-            {/* Reset */}
+            </div>            {/* Reset */}
             <button onClick={() => { setZoom(100); setShowHeatmap(true); setShowPins(true); setShowRedFree(false); }}
               style={iconBtnStyle} title="Reset view">↺</button>
           </div>
@@ -406,8 +413,11 @@ export default function Canvas({
             {/* ── Circular fundus image with pins ── */}
             <div style={{
               position: 'relative',
-              width: `${Math.min(540, 540 * zoom / 100)}px`,
-              height: `${Math.min(540, 540 * zoom / 100)}px`,
+              width: `${540 * zoom / 100}px`,
+              height: `${540 * zoom / 100}px`,
+              maxWidth: 'min(540px, calc(60vw - 40px))',
+              maxHeight: 'min(540px, calc(100vh - 160px))',
+              aspectRatio: '1 / 1',
               borderRadius: '50%',
               overflow: 'hidden',
               boxShadow: '0 0 0 1px rgba(255,255,255,0.06), 0 0 60px rgba(0,0,0,0.8)',
