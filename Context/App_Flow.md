@@ -1,196 +1,144 @@
 # Application Flow Document
 
-**RetinaScan-XAI: Screen-by-Screen User Flow Specification**
+**RetinaScan-XAI: Clinical Interface State Machine & Multi-Persona Screening Flow**
 
-Version: 1.0 | Companion: UI/UX Design Document, API Contract
-
----
-
-## 1. Overview
-
-The application follows a linear screening pipeline. The user progresses through a fixed sequence of screens. Navigation is controlled by `App.jsx` which acts as a state machine.
+**Version:** 3.0 | **Companion:** UI/UX Design Document, API Contract v3.0
 
 ---
 
-## 2. Screen Flow Diagram
+## 1. High-Level Flow Topology
+
+The application is architected around an extensible state machine managed in `App.jsx`. It supports 9 primary screens, dual clinical personas, and LocalStorage-backed persistence:
 
 ```
-HOME --> UPLOAD --> QUALITY CHECK --> PROCESSING --> RESULTS --> CANVAS
-  |                                                    |           |
-  +--> ADMIN                                           +--> QUEUE  +--> REFERRAL
+                  ┌─────────────────────────────────────────────────────────┐
+                  │                       HOME SCREEN                       │
+                  │        (Intake Portal · Queue View · Analytics)         │
+                  └──────┬───────────────────────┬────────────────────┬─────┘
+                         │                       │                    │
+            "New Scan"   │          "Open Queue" │                    │ "Audit / Admin"
+                         ▼                       ▼                    ▼
+                  ┌──────────────┐        ┌──────────────┐     ┌──────────────┐
+                  │    UPLOAD    │        │  QUEUE VIEW  │     │  ADMIN VIEW  │
+                  └──────┬───────┘        └──────┬───────┘     └──────────────┘
+                         │                       │
+      Start Screening    ▼                       │ Select Patient
+                  ┌──────────────┐               │
+                  │ QUALITYCHECK │               │
+                  └──────┬───────┘               │
+                         │ Auto-advance          │
+                         ▼                       │
+                  ┌──────────────┐               │
+                  │  PROCESSING  │               │
+                  └──────┬───────┘               │
+                         │ Auto-advance          │
+                         ▼                       │
+                  ┌──────────────────────────────▼──────────────────────────┐
+                  │                      RESULTS SCREEN                     │
+                  │   ┌────────────────────────┐  ┌───────────────────────┐ │
+                  │   │  Doctor Console View   │  │  ASHA Counselor View  │ │
+                  │   │  (ETDRS, Laser XAI)    │  │  (Audio, Pictograms)  │ │
+                  │   └───────────┬────────────┘  └───────────┬───────────┘ │
+                  └───────────────┼───────────────────────────┼─────────────┘
+                                  │                           │
+                   "Open PACS"    ▼                           ▼  "Print Slip"
+                          ┌──────────────┐             ┌──────────────┐
+                          │  PACS CANVAS │             │ REFERRAL DOC │
+                          └──────────────┘             └──────────────┘
 ```
 
-**Primary Happy Path:**
-```
-Home -> Upload -> QualityCheck -> Processing -> Results -> Canvas
-```
+---
 
-**Error Path (OOD Rejection):**
-```
-Home -> Upload -> QualityCheck -> Processing -> [API returns error] -> Alert -> Upload
-```
+## 2. Screen-by-Screen Specifications
 
-**Demo Reset:**
-```
-Any Screen -> Ctrl+Shift+R -> Home
-```
+### 2.1 Home Screen (`Home.jsx`)
+- **Header:** Displays system status (Online / Ready), active language selector, and title.
+- **Hero Unit:** Clean hospital-grade welcome banner explaining the point-of-care screening workflow.
+- **Three Core Action Cards:**
+  1. *Patient Intake & Scan Upload:* Launches new screening intake.
+  2. *Tele-Ophthalmology Triage Queue:* Opens prioritized triage list.
+  3. *Audit & Analytics Dashboard:* Shows throughput and severity distributions.
+- **Quick Patient Switcher:** Immediate access to pre-calibrated clinical demo patients across all 5 ICDR grades.
+
+### 2.2 Upload Screen (`Upload.jsx`)
+- **2-Column Clinical Layout:**
+  - *Left Column (Patient Demographics):* Patient ID, Full Name, Age, Gender, Village / PHC Center, Diabetes Duration, HbA1c level, Laterality selector (OD: Right Eye vs OS: Left Eye), and clinical notes.
+  - *Right Column (Preset Demo Patients):* Rapid selection cards for instant demo fill (e.g., Smt. Geeta Sharma, Mohd. Shafi, Harpreet Kaur).
+- **Drag-and-Drop Image Uploader:** File picker supporting JPEG, PNG, TIFF, and BMP fundus photographs.
+- **Actions:**
+  - Clicking "Start AI Screening" executes local client thumbnail generation, validates inputs, and triggers the asynchronous `/upload` backend request while transitioning to `QualityCheck`.
+
+### 2.3 QualityCheck Screen (`QualityCheck.jsx`)
+- **Animated Clinical Quality Assurance Gate:**
+  - Three sequential IQA progress tracks:
+    1. *Focus & Sharpness Analysis* (Target: $>90\%$).
+    2. *Illumination & Exposure Homogeneity* (Target: $>88\%$).
+    3. *Field-of-View (FOV) Geometric Coverage* (Target: $>92\%$).
+  - Once all 3 bars complete, checks turn green, and the view automatically transitions to `Processing`.
+
+### 2.4 Processing Screen (`Processing.jsx`)
+- **Inference Diagnostic Tracker:**
+  - Visual spinning progress ring with live status checkpoints:
+    1. *Preprocessing & Contrast Enhancement:* CLAHE & circular FOV isolation.
+    2. *ResNet-50 v2 Deep Neural Inference:* 5-class calibrated softmax evaluation.
+    3. *Grad-CAM++ & Morphological Lesion Mapping:* Activation hooks, vessel subtraction, optic disc masking.
+    4. *ETDRS Macular Profiling:* Fovea distance caliper computation.
+- Automatically transitions to `Results` upon pipeline completion.
+
+### 2.5 Results Screen (`Results.jsx`) — Dual Persona Clinical Console
+The flagship workstation screen featuring a **3-Actor Persona Switcher**:
+
+#### A. Doctor Clinical Workstation (Default)
+- **Diagnostic Header:** ICDR Grade Badge (0 to 4), Clinical Label, Confidence score, and Recommended Action Window.
+- **Full Softmax Probability Distribution:** Visual bars for all 5 grades.
+- **Optical Inspection Console:**
+  - Letterbox-calibrated fundus viewport (`imgBounds`).
+  - Optical Zoom steppers ($1\times, 1.5\times, 2\times, 2.5\times, 3\times$) and mouse wheel zoom.
+  - Interactive Drag-to-Pan navigation across macular and nasal quadrants.
+  - Layer Toggles: Grad-CAM++ saliency (with opacity slider), Lesion markers, Red-Free 540nm green channel filter, and ETDRS 9-Zone concentric grid.
+- **Automated ETDRS 9-Zone Macular Grid & CSME Profiler:**
+  - Central Subfield (CSF, 1mm), Inner Ring (3mm), Outer Ring (6mm).
+  - Center-Involved CSME warning if hard exudates lie within $500\,\mu m$ of fovea.
+  - Interactive foveal reticle for position adjustment.
+- **In-Silico Laser Counterfactual XAI Laboratory:**
+  - Clinician toggles "Laser Mode", selects suspect lesion pins or freehand spots ($532\,\text{nm}$ green photocoagulation).
+  - Clicks "Fire Laser & Re-evaluate".
+  - Backend runs biophysical Telea inpainting, executes ResNet-50 re-inference, and displays side-by-side treated scans, probability drop ($\Delta P$), and causal attribution score.
+- **Actions:** "Open PACS Canvas", "Print Specialist Referral", "Switch to ASHA View".
+
+#### B. ASHA & Community Health Worker Counseling Portal
+- **Culturally Tailored Vernacular Interface:**
+  - Switchable between Hindi, Marathi, Telugu, Tamil, Bengali, and English.
+- **Web Speech API Audio Narration:**
+  - A single click plays a spoken, compassionate audio explanation in the chosen Indian language.
+  - Audio pronunciation is localized with respectful Indian honorifics (e.g. Smt. Geeta Sharma).
+- **Rural Pictogram Directives:**
+  - Traffic-light hospital urgency badge (e.g., "7 to 14 days" for high CSME risk).
+  - Eye protection icon, glycemic control badge, and dietary food cards ("Eat: Spinach, Fenugreek, Bitter gourd, Dal; Avoid: Sweets, Sugar tea, Fried snacks").
+- **Take-Home Advice Slip:** One-click printing of a localized patient counseling slip.
+
+### 2.6 PACS Canvas Screen (`Canvas.jsx`)
+- High-contrast clinical PACS diagnostic canvas.
+- Features indexed pathological findings table listing every detected Microaneurysm, Hemorrhage, and Hard Exudate with pixel areas and confidence scores.
+- Anatomical Quadrant Radar partitioning lesions across Superior-Temporal (ST), Superior-Nasal (SN), Inferior-Temporal (IT), and Inferior-Nasal (IN).
+
+### 2.7 Triage Queue Screen (`Queue.jsx`)
+- Triage review queue displaying both pre-baked demo patients and live scanned patients persisted in `localStorage`.
+- Severity badges, confidence metrics, laterality tags, and triage urgency filters (All, Referrals, Routine).
+- Selecting any patient immediately reloads their scan and full diagnostic profile across the workstation.
+
+### 2.8 Referral Screen (`Referral.jsx`)
+- Formal printable Clinical Referral Slip and Specialist Triage Letter.
+- Formatted for Ayushman Bharat Digital Mission (ABDM) compliance with patient demographics, ICDR classification, ETDRS CSME risk findings, specialist referral timeline, and institutional sign-off sections.
+
+### 2.9 Admin Screen (`Admin.jsx`)
+- PHC screening analytics and capacity planning simulator.
+- Interactive sliders for daily screening volume, camera count, and available ophthalmologists.
+- Calculates daily review backlogs and days to queue exhaustion.
 
 ---
 
-## 3. Screen Specifications
+## 3. Global Shortcuts & Exception Handling
 
-### 3.1 Home (Landing Screen)
-
-**Purpose:** Entry point. Shows system status and 3 module cards.
-
-**Layout:** Full-width dark-navy background. Three glass-morphism cards:
-1. "New Screening" -- navigates to Upload
-2. "Review Queue" -- navigates to Queue
-3. "Analytics" -- navigates to Admin
-
-**User Action:** Click any card to navigate.
-
----
-
-### 3.2 Upload (Patient Intake)
-
-**Purpose:** Register patient and upload fundus image.
-
-**Layout:** 2-column form.
-- Left column: Patient fields (Name, Age, Sex, Diabetes Duration, Eye Side, Notes)
-- Right column: Preset demo patient cards (click to auto-fill)
-- Bottom: Drag-and-drop image upload zone + "Start Screening" button
-
-**User Action:** Fill form or click preset card, upload image, click "Start Screening".
-
-**On Submit:**
-1. `App.jsx` stores patient data + image in state.
-2. Navigation advances to QualityCheck.
-
----
-
-### 3.3 QualityCheck (IQA Animation)
-
-**Purpose:** Simulated Image Quality Assessment gate.
-
-**Layout:** Dark panel with 3 sequential animated progress bars:
-1. Focus Analysis
-2. Illumination Check
-3. Field-of-View Validation
-
-**Behavior:**
-- Each bar fills over 1-2 seconds with a green completion animation.
-- All 3 bars must complete before auto-advancing.
-- Auto-navigates to Processing after ~4 seconds total.
-
-**Note:** This is a UI animation only. The actual quality check (OOD validation) happens server-side during inference.
-
----
-
-### 3.4 Processing (Inference Animation)
-
-**Purpose:** Animated loading screen while the backend processes the image.
-
-**Layout:** Center-screen conic-gradient spinning ring with a sequential checklist:
-1. "Initializing DeepRetina-v4 Engine..."
-2. "Applying CLAHE Enhancement..."
-3. "Running ResNet-50 Forward Pass..."
-4. "Generating Grad-CAM Overlay..."
-5. "Computing Severity Classification..."
-
-**Behavior:**
-- On mount, `App.jsx` sends `POST /upload` with the image.
-- Checklist items resolve one by one as a timed animation.
-- When API response arrives AND all animation steps complete, navigate to Results.
-- If API returns `mode: "error"`, show alert and navigate back to Upload.
-
----
-
-### 3.5 Results (Clinical Results Viewer)
-
-**Purpose:** Display the AI diagnosis.
-
-**Layout:**
-- Top: Patient context bar (name, age, eye side)
-- Center: Large severity badge with color-coded background (green/yellow/orange/red)
-- Below: 5 horizontal probability bars for each ICDR level
-- Below: Clinical action recommendation text
-- Bottom: "View Detailed Analysis" button (navigates to Canvas)
-
-**Data Source:** `severity`, `confidence`, `label`, `action`, `all_probs` from API response.
-
----
-
-### 3.6 Canvas (PACS Workstation)
-
-**Purpose:** Detailed clinical review with interactive image annotations.
-
-**Layout:**
-- Left panel: Circular fundus image with Grad-CAM overlay toggle
-- Numbered lesion pins overlaid on image (from `data.js` coordinates)
-- Hover pins to see lesion type + confidence
-- Right panel: Findings table listing each detected lesion
-- Bottom: Action buttons (Approve, Override, Generate Referral)
-
-**Data Source:** `heatmap_url` from API + lesion coordinates from `data.js`.
-
----
-
-### 3.7 Queue (Patient Review Queue)
-
-**Purpose:** List of patients awaiting or completed review.
-
-**Layout:** Table/list with columns: Patient Name, Severity Badge, Confidence, Status (Pending/Reviewed), Timestamp.
-
-**Data Source:** Mock data from `data.js`.
-
----
-
-### 3.8 Referral (Referral Letter)
-
-**Purpose:** Auto-generated referral letter for severe cases (Level 2+).
-
-**Layout:** Formal letter template with:
-- Patient demographics
-- Screening date and facility
-- AI severity grade + confidence
-- Clinical recommendation
-- Screening technician signature line
-
----
-
-### 3.9 Admin (Analytics Dashboard)
-
-**Purpose:** Operational metrics for program administrators.
-
-**Layout:** Dashboard with cards/charts:
-- Total screenings today / this week / this month
-- Severity distribution pie chart
-- Referable DR percentage
-- Average confidence score
-- System uptime status
-
-**Data Source:** Mock data from `data.js`.
-
----
-
-## 4. State Management
-
-`App.jsx` manages global state via React `useState`:
-
-```javascript
-const [screen, setScreen] = useState("home");        // Current screen
-const [patientData, setPatientData] = useState(null); // From Upload form
-const [uploadedImage, setUploadedImage] = useState(null); // File object
-const [result, setResult] = useState(null);           // API response
-```
-
-Navigation is a simple switch statement rendering the active component. No router library is used.
-
----
-
-## 5. Keyboard Shortcuts
-
-| Shortcut | Action |
-|----------|--------|
-| Ctrl+Shift+R | Reset entire app to Home screen (clear all state) |
+- **`Ctrl+Shift+R` (Instant Demo Reset):** Global key listener resetting the application state machine, clearing temporary uploads, and returning to the baseline Moderate NPDR demo patient.
+- **Out-of-Distribution Error Interception:** If the backend detects a non-fundus scan or poor illumination, the upload is safely rejected with an informative alert, and the UI cleanly restores the last known valid patient state without crashing.

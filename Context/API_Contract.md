@@ -1,173 +1,289 @@
 # API Contract Document
 
-**RetinaScan-XAI: Frontend-Backend Integration Specification**
+**RetinaScan-XAI: Clinical Workstation & In-Silico XAI Backend Specification**
 
-Version: 1.0 | Status: FROZEN (Do not modify without team lead approval)
-
----
-
-## Overview
-
-This document defines the exact JSON contract between the Backend (P2) and Frontend (P3). Both parties must implement against this spec from Day 1. The Backend must always return these exact keys. The Frontend must only read these keys.
-
-**Base URL:** `http://localhost:8000`
+**Version:** 3.0 | **Status:** PRODUCTION FROZEN | **Base URL:** `http://localhost:8000`
 
 ---
 
-## Endpoints
+## 1. Architectural Overview
 
-### 1. `POST /upload`
+The RetinaScan-XAI Backend exposes a high-performance, asynchronous REST API powered by **FastAPI** and **PyTorch**. The server operates in two modes:
+1. **REAL MODE (`mode: "real"`):** Activated when `ml_script/retinascan_resnet50_v2.pth` (or `Backend/retinascan_resnet50.pth`) is present. Executes live deep learning inference, Grad-CAM saliency extraction, computer vision lesion segmentation, automated ETDRS 9-zone macular grid calculations, and in-silico laser counterfactual simulation.
+2. **MOCK MODE (`mode: "mock"`):** Fallback mode when model weights are not loaded. Returns structurally identical clinical payloads so frontend testing and UI development can proceed without GPU/heavy weights.
 
-Upload a fundus image for DR grading.
+---
 
-**Request:**
-- Method: `POST`
-- Content-Type: `multipart/form-data`
-- Body: Form field `file` containing the image (JPEG/PNG)
+## 2. API Endpoints Summary
 
-**Success Response (200):**
+| Method | Endpoint | Description | Request Type | Response Mode |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `/upload` | Full diagnostic screening pipeline (IQA, ResNet-50 grading, Grad-CAM, lesion segmentation, ETDRS grid) | `multipart/form-data` | `real` / `mock` / `error` |
+| `POST` | `/counterfactual-laser` | In-silico laser photocoagulation ablation, Telea inpainting, re-inference & causal $\Delta P$ attribution | `application/json` | `json` |
+| `POST` | `/etdrs-profile` | Fovea-centered ETDRS 9-zone macular grid calculation and CSME threat stratification | `application/json` | `json` |
+| `POST` | `/lesion-test` | Diagnostic computer vision lesion segmentation without deep learning model | `multipart/form-data` | `segment_only` |
+| `GET` | `/health` | Server liveness, model load state, and hardware execution status | None | `json` |
+| `GET` | `/eval-report` | Locked multi-center clinical validation metrics (ResNet-50 v2 / APTOS + MESSIDOR-2) | None | `json` |
+| `GET` | `/images/{filename}` | Static file server for generated Grad-CAMs, treated scans, and upload artifacts | None | Image Binary |
+
+---
+
+## 3. Detailed Endpoint Specifications
+
+### 3.1 `POST /upload`
+Submits a retinal fundus photograph for clinical quality assessment, diabetic retinopathy grading, Grad-CAM generation, pathological lesion detection, and macular edema staging.
+
+#### Request
+- **Headers:** `Content-Type: multipart/form-data`
+- **Body:** `file: <binary image file>` (JPEG, PNG, BMP, TIFF)
+
+#### Success Response (`200 OK`, `mode: "real"` or `"mock"`)
 ```json
 {
-  "severity":    2,
-  "confidence":  96.4,
-  "label":       "Moderate NPDR",
-  "action":      "Specialist Triage Required",
-  "heatmap_url": "/images/heatmap_live_abc123.jpg",
-  "all_probs":   [0.01, 0.05, 0.72, 0.14, 0.08],
-  "mode":        "real",
+  "severity": 2,
+  "confidence": 96.4,
+  "label": "Moderate NPDR",
+  "action": "Specialist Triage Required",
+  "heatmap_url": "/images/heatmap_live_762fe0ec.png",
+  "image_url": "/images/scan_live_762fe0ec.jpg",
+  "all_probs": [0.0002, 0.0095, 0.9097, 0.0170, 0.0636],
+  "mode": "real",
   "lesions": [
-    { "type": "microaneurysm", "bbox": [120, 88, 134, 101], "area_px": 87, "confidence": 0.82 },
-    { "type": "hemorrhage",    "bbox": [200, 150, 240, 185], "area_px": 620, "confidence": 0.74 },
-    { "type": "exudate",       "bbox": [90, 170, 130, 200],  "area_px": 450, "confidence": 0.91 }
+    {
+      "id": 1,
+      "type": "microaneurysm",
+      "bbox": [120, 88, 134, 101],
+      "area_px": 87,
+      "confidence": 0.82
+    },
+    {
+      "id": 2,
+      "type": "hemorrhage",
+      "bbox": [200, 150, 240, 185],
+      "area_px": 620,
+      "confidence": 0.74
+    },
+    {
+      "id": 3,
+      "type": "exudate",
+      "bbox": [90, 170, 130, 200],
+      "area_px": 450,
+      "confidence": 0.91
+    }
   ],
   "lesion_summary": {
     "microaneurysm_count": 5,
     "hemorrhage_count": 2,
     "exudate_count": 3,
     "total_lesion_area_px": 2340
+  },
+  "etdrs_profile": {
+    "eye": "od",
+    "fovea": { "x_pct": 50.0, "y_pct": 50.0 },
+    "csme_risk": "HIGH",
+    "csme_classification": "Center-Involved Diabetic Macular Edema (CI-DME)",
+    "closest_exudate_microns": 320.5,
+    "sector_counts": {
+      "CSF": 1,
+      "IS": 1,
+      "IN": 0,
+      "II": 1,
+      "IT": 0,
+      "OS": 0,
+      "ON": 0,
+      "OI": 0,
+      "OT": 0,
+      "Peripheral": 0
+    },
+    "urgent_referral_recommended": true
+  },
+  "ood_warnings": []
+}
+```
+
+#### Out-of-Distribution Rejection Response (`200 OK`, `mode: "error"`)
+If the image fails the physiological fundus gatekeeper (e.g. non-retinal image, severe glare, document screenshot, missing blood vessels):
+```json
+{
+  "mode": "error",
+  "error": "Image lacks characteristic retinal melanin pigment (R/B ratio 1.12 < 1.70). Please upload a valid retinal scan."
+}
+```
+
+---
+
+### 3.2 `POST /counterfactual-laser`
+Simulates clinical laser photocoagulation (argon 532nm green laser) or lesion ablation on targeted pathologies. Replaces diseased retinal pigment epithelium with healthy tissue via biophysical Telea inpainting, executes re-inference through the ResNet-50 backbone, generates counterfactual Grad-CAM, and calculates causal attribution metrics.
+
+#### Request (`application/json`)
+```json
+{
+  "image_identifier": "/images/img_2_od.jpg",
+  "original_severity": 2,
+  "original_probs": [0.0002, 0.0095, 0.9097, 0.0170, 0.0636],
+  "ablated_lesions": [
+    {
+      "id": 1,
+      "type": "hemorrhage",
+      "x": 48.5,
+      "y": 32.1,
+      "area_px": 620,
+      "bbox": [200, 150, 240, 185]
+    }
+  ],
+  "laser_spots": [
+    {
+      "x": 52.0,
+      "y": 34.0,
+      "radius": 18.0
+    }
+  ]
+}
+```
+
+#### Response (`200 OK`)
+```json
+{
+  "success": true,
+  "counterfactual": {
+    "severity": 1,
+    "label": "Mild NPDR",
+    "confidence": 78.4,
+    "probs": [0.0120, 0.7840, 0.1420, 0.0380, 0.0240],
+    "heatmap_url": "/images/heatmap_laser_a98df2c1.png",
+    "treated_image_url": "/images/laser_treated_a98df2c1.jpg",
+    "lesions": [],
+    "lesion_summary": {
+      "microaneurysm_count": 1,
+      "hemorrhage_count": 0,
+      "exudate_count": 1,
+      "total_lesion_area_px": 510
+    }
+  },
+  "causal_metrics": {
+    "probability_delta_pct": -24.8,
+    "causal_attribution_score": 82.5,
+    "causal_strength": "Decisive Causal Role",
+    "grade_shift": "Down-staged from Grade 2 → Grade 1",
+    "clinical_verdict": "Causal Validation Confirmed: In-silico ablation of targeted lesions reduced Grade 2 probability by 24.8%."
   }
 }
 ```
 
-**Field Definitions:**
+---
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `severity` | int (0-4) | ICDR severity level |
-| `confidence` | float | Top-class probability as percentage (0-100) |
-| `label` | string | Human-readable severity label |
-| `action` | string | Clinical action recommendation |
-| `heatmap_url` | string | Relative URL to the Grad-CAM overlay image |
-| `all_probs` | float[5] | Softmax probabilities for all 5 classes [L0, L1, L2, L3, L4] |
-| `mode` | string | `"real"` (live inference), `"mock"` (pre-computed fallback) |
-| `lesions` | array | List of detected lesion objects (see below) |
-| `lesion_summary` | object | Aggregate lesion counts and total area |
+### 3.3 `POST /etdrs-profile`
+Calculates sub-millimeter concentric zone distributions and Clinically Significant Macular Edema (CSME) risk using the standard ETDRS 9-zone layout.
 
-**Lesion Object Fields:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `type` | string | `"microaneurysm"`, `"hemorrhage"`, or `"exudate"` |
-| `bbox` | int[4] | Bounding box `[x1, y1, x2, y2]` in pixel coordinates (224x224 space) |
-| `area_px` | int | Lesion area in pixels |
-| `confidence` | float | Detection confidence (0.0 - 1.0) based on morphological feature strength |
-
-**Lesion Summary Fields:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `microaneurysm_count` | int | Number of detected microaneurysms |
-| `hemorrhage_count` | int | Number of detected hemorrhages |
-| `exudate_count` | int | Number of detected exudates |
-| `total_lesion_area_px` | int | Combined pixel area of all lesions |
-
-**Severity Labels & Actions:**
-
-| severity | label | action |
-|----------|-------|--------|
-| 0 | No Apparent DR | Routine Annual Screening |
-| 1 | Mild NPDR | Review in 6-12 Months |
-| 2 | Moderate NPDR | Specialist Triage Required |
-| 3 | Severe NPDR | Urgent Specialist Referral |
-| 4 | Proliferative DR | Emergency Laser / Surgical Review |
-
-**OOD Rejection Response (200, mode=error):**
+#### Request (`application/json`)
 ```json
 {
-  "mode":  "error",
-  "error": "No circular retinal mask detected (Corners too bright)."
+  "lesions": [
+    { "type": "exudate", "bbox": [230, 240, 250, 260], "area_px": 280 }
+  ],
+  "fovea_x": 50.0,
+  "fovea_y": 50.0,
+  "eye": "od"
 }
 ```
 
-Frontend behavior on `mode === "error"`:
-- Show browser alert with `error` message
-- Abort pipeline animations
-- Return user to Upload screen
-
-**Mock Fallback Response (200, mode=mock):**
+#### Response (`200 OK`)
 ```json
 {
-  "severity":    2,
-  "confidence":  96.4,
-  "label":       "Moderate NPDR",
-  "action":      "Specialist Triage Required",
-  "heatmap_url": "/images/heatmap_2_od.jpg",
-  "all_probs":   [0.01, 0.05, 0.72, 0.14, 0.08],
-  "mode":        "mock"
+  "eye": "od",
+  "fovea": { "x_pct": 50.0, "y_pct": 50.0 },
+  "csme_risk": "HIGH",
+  "csme_classification": "Center-Involved Diabetic Macular Edema (CI-DME)",
+  "closest_exudate_microns": 420.0,
+  "sector_counts": {
+    "CSF": 1,
+    "IS": 0,
+    "IN": 0,
+    "II": 0,
+    "IT": 0,
+    "OS": 0,
+    "ON": 0,
+    "OI": 0,
+    "OT": 0,
+    "Peripheral": 0
+  },
+  "urgent_referral_recommended": true
 }
 ```
-
-Returned when no `.pth` model file is present. Frontend treats it identically to `"real"` mode.
 
 ---
 
-### 2. `GET /health`
+### 3.4 `POST /lesion-test`
+Standalone diagnostic endpoint to test morphological lesion segmentation without loading the deep neural network.
 
-Check server status and model availability.
+#### Request
+- **Headers:** `Content-Type: multipart/form-data`
+- **Body:** `file: <binary image>`
 
-**Response (200):**
+#### Response (`200 OK`)
 ```json
 {
-  "status":       "ok",
+  "mode": "segment_only",
+  "lesions": [
+    { "type": "microaneurysm", "bbox": [110, 95, 122, 107], "area_px": 78, "confidence": 0.81 }
+  ],
+  "lesion_summary": {
+    "microaneurysm_count": 1,
+    "hemorrhage_count": 0,
+    "exudate_count": 0,
+    "total_lesion_area_px": 78
+  }
+}
+```
+
+---
+
+### 3.5 `GET /health`
+Returns system status, model availability, and active inference configuration.
+
+#### Response (`200 OK`)
+```json
+{
+  "status": "ok",
   "model_loaded": true,
-  "inference_mode": "real"
+  "segment_loaded": true,
+  "inference_mode": "real",
+  "api_version": "3.0"
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `status` | string | `"ok"` if server is running |
-| `model_loaded` | bool | `true` if `.pth` file is loaded |
-| `inference_mode` | string | `"real"` or `"mock"` |
-
 ---
 
-### 3. `GET /eval-report`
+### 3.6 `GET /eval-report`
+Returns the frozen multi-center clinical validation metrics (ResNet-50 v2, evaluated across held-out sets of APTOS 2019 and MESSIDOR-2).
 
-Returns the full model evaluation metrics.
-
-**Response (200):**
+#### Response (`200 OK`)
 ```json
 {
-  "model": "RetinaScan-XAI ResNet-50 Fine-Tuned",
-  "dataset": "APTOS 2019 Blindness Detection",
-  "validation_set": 733,
-  "overall_accuracy": 0.794,
+  "model": "RetinaScan-XAI ResNet-50 v2",
+  "note": "Trained on 80% of APTOS and 80% of MESSIDOR independently. Val 20% held-out for evaluation.",
+  "datasets": [
+    "APTOS 2019 (3662 images)",
+    "MESSIDOR-2 (1744 gradable images)"
+  ],
+  "train_count": 4324,
+  "validation_set": 1082,
+  "overall_accuracy": 0.72,
   "binary_referable_dr": {
     "definition": "Positive = ICDR Level 2, 3, or 4",
-    "optimal_threshold": 0.1162,
-    "threshold_method": "Youden's J index",
-    "sensitivity": 0.9765,
-    "specificity": 0.892,
-    "ppv": 0.8609,
-    "npv": 0.9823,
-    "f1_score": 0.9151,
-    "auc_roc": 0.9783,
+    "optimal_threshold": 0.1657,
+    "threshold_method": "Youden's J index on ROC curve",
+    "sensitivity": 0.9332,
+    "specificity": 0.8615,
+    "ppv": 0.7908,
+    "npv": 0.9583,
+    "f1_score": 0.8561,
+    "auc_roc": 0.9702,
     "confusion_matrix": {
-      "true_positive": 291,
-      "true_negative": 388,
-      "false_positive": 47,
-      "false_negative": 7
+      "true_positive": 363,
+      "true_negative": 597,
+      "false_positive": 96,
+      "false_negative": 26
     }
   },
   "benchmark_targets_met": {
@@ -179,40 +295,20 @@ Returns the full model evaluation metrics.
 
 ---
 
-### 4. `GET /images/{filename}`
+## 4. ICDR Standard Severity Mapping
 
-Serves static heatmap images generated during inference.
-
-**Response:** JPEG image file (served via FastAPI StaticFiles mount).
-
----
-
-## CORS Configuration
-
-Backend must include the following CORS headers to allow frontend (localhost:5173) to fetch:
-
-```python
-from fastapi.middleware.cors import CORSMiddleware
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-```
+| Grade | Clinical Label | Recommended Clinical Action | Priority |
+| :---: | :--- | :--- | :---: |
+| **0** | No Apparent DR | Routine Annual Screening | Normal |
+| **1** | Mild NPDR | Review in 6–12 Months | Routine |
+| **2** | Moderate NPDR | Specialist Triage Required (14–30 Days) | Priority |
+| **3** | Severe NPDR | Urgent Specialist Referral (within 7 Days) | Urgent |
+| **4** | Proliferative DR | Emergency Laser / Surgical Review (24–48 Hours) | Emergency |
 
 ---
 
-## Error Handling Rules
+## 5. Middleware & Safeguards
 
-1. Backend must NEVER return a raw Python traceback to the frontend.
-2. All errors must be returned as valid JSON with `"mode": "error"` and an `"error"` string.
-3. Frontend must check `response.mode` before accessing any other fields.
-4. If `fetch()` itself fails (network error), frontend shows "Backend not running" alert.
-
----
-
-## Schema Source of Truth
-
-The mock data schema in `Frontend/retinascan-app/src/data.js` defines the canonical field names. Backend response keys must exactly match the keys used in `data.js`. Any schema change requires team lead approval.
+1. **CORS:** Configured for local development (`allow_origins=["*"]`).
+2. **Concurrency Serialization:** Enforced via `asyncio.Lock()` to ensure inference executes sequentially and caps system RAM usage under 3GB.
+3. **Structured Error Handling:** All errors return HTTP 200 with `{"mode": "error", "error": "..."}` or HTTP 415 for unsupported media types. Raw Python tracebacks are never leaked to the client.

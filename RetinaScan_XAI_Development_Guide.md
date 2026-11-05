@@ -1,311 +1,192 @@
-# RetinaScan-XAI — Reviewed Implementation Blueprint
+# RetinaScan-XAI — Development, Architecture & Operations Guide
 
-**Explainable AI Clinical Decision Support System**
-**Engineering Blueprint · Modular Architecture · Parallel Workflow**
-
----
-
-## PART A — Architectural Review & Critique
-
-The following issues were identified in the existing codebase and prior plan. Every fix listed here is incorporated into the rewritten blueprint in Part B.
-
-### CRITICAL: Preprocessing Train/Inference Mismatch
-
-**Problem:** `train_model.py` trains with only standard ImageNet normalization (`transforms.Normalize([0.485...`). But `inference.py` now applies CLAHE + Ben Graham normalization *before* the same ImageNet normalize. The model has never seen CLAHE/Ben-Graham enhanced images during training.
-
-**Impact:** The model's learned feature distributions do not match the inference input distribution. This silently degrades accuracy on every live upload. The 97.6% sensitivity number was measured on raw images — it does not hold on enhanced images.
-
-**Fix (Week 1, P1):** Add CLAHE + Ben Graham as the *first* transform in `train_model.py`'s training and validation pipelines, then retrain the model. Alternatively, remove CLAHE from `inference.py` to match training. The pipeline must be identical end-to-end.
+**Explainable AI Clinical Decision Support System for Point-of-Care Ophthalmology**  
+**Engineering Guide · System Architecture · Operations Runbook · Version 3.0**
 
 ---
 
-### CRITICAL: Data Leakage Risk in Evaluation
+## 1. Architectural History & Problem-Solution Matrix
 
-**Problem:** `train_model.py` and `evaluate_model.py` both use `train_test_split(df, test_size=0.20, random_state=42, stratify=...)`. They share the same CSV and the same seed, so the val set *should* be identical. However, there is no explicit mechanism to guarantee this. If the CSV is re-sorted, or a row is added/removed between runs, the splits silently diverge and evaluation metrics become meaningless.
+During early iterations of RetinaScan-XAI, several architectural bottlenecks were identified. The table below documents each challenge, its root cause, and how it was systematically resolved in Version 3.0:
 
-**Impact:** A single row change in `train.csv` means `evaluate_model.py` is testing on images the model was trained on, inflating sensitivity/specificity numbers.
-
-**Fix (Week 1, P1):** Split once, save `train_ids.csv` and `val_ids.csv` to disk. Both scripts load from these frozen split files. Never re-split.
-
----
-
-### HIGH: Training Uses 0.50 Threshold, Evaluation Uses Youden's J
-
-**Problem:** `train_model.py` line 196 hardcodes `binary_pred = (referable_prob >= 0.5)` for its per-epoch sensitivity logging. But `evaluate_model.py` uses Youden's J to find `0.1162`. The numbers printed during training are misleading — they suggest lower sensitivity than the model actually achieves.
-
-**Fix:** Use the same threshold logic everywhere, or clearly label the training logs as "at default 0.50 threshold" so nobody confuses them with the final tuned metrics.
+| # | Identified Bottleneck | Clinical / Engineering Risk | Root Cause | Implemented Solution in v3.0 | Status |
+| :-: | :--- | :--- | :--- | :--- | :---: |
+| **1** | **Train / Inference Preprocessing Mismatch** | Subtle feature distortion and degraded live accuracy | Inference applied CLAHE/Ben-Graham while training initially used raw images | Extracted single source of truth into `ml_script/preprocess.py`. Inference strictly uses `val_transforms` (resize + normalize) matching training. | ✅ Resolved |
+| **2** | **Data Leakage in Evaluation** | Artificially inflated sensitivity/specificity metrics | Re-splitting datasets with `train_test_split` risked subtle split shifts | Created `ml_script/split_dataset.py`, freezing `train_ids.csv`, `val_ids.csv`, and `val_ids_v2.csv` permanently on disk. | ✅ Resolved |
+| **3** | **Decision Threshold Inconsistency** | Training logged 0.50 threshold while evaluation used Youden's J | Hardcoded binary cutoff during training epochs | Standardized Youden's J Index optimization on validation ROC curve (`0.1657` for v2 multi-center). | ✅ Resolved |
+| **4** | **Fragile OOD Heuristics** | False rejections of real scans or failure to reject non-medical photos | Primitive corner brightness & red-ratio checks | Engineered multi-stage chromatic, structural (Hough orthogonal lines), vascular, and confidence gatekeeper in `inference.py`. | ✅ Resolved |
+| **5** | **Duplicated Model Architecture** | Cryptic `state_dict` mismatch errors across scripts | `build_model()` copy-pasted across 4 separate files | Centralized `build_model()` exclusively in `ml_script/model.py`. All training, testing, and backend modules import from here. | ✅ Resolved |
+| **6** | **Grad-CAM Hook Memory Leak** | Server memory growth and progressive latency degradation | Forward/backward hooks accumulated on singleton model | Refactored `GradCAMSimple` to register hooks per request and guarantee `h.remove()` inside a `finally` block. | ✅ Resolved |
+| **7** | **Camera Sensor Optical Cropping** | Slicing 34% off wide-angle fundus photos, obscuring optic disc | Fixed circular viewports using `object-fit: cover` | Built reactive `imgBounds` letterbox calculation in `Results.jsx` and `Canvas.jsx`, locking all overlays to the true sensor ratio. | ✅ Resolved |
 
 ---
 
-### HIGH: OOD Detector is Fragile
+## 2. Production System Architecture
 
-**Problem:** `validate_fundus()` uses two hardcoded heuristics: corner brightness > 0.35 and red-channel dominance. Many legitimate fundus cameras (especially wide-field or smartphone adapters) produce images with bright corners. Some healthy fundus images have green-tinted illumination.
+RetinaScan-XAI employs a decoupled 3-tier architecture optimized for edge devices (standard clinic laptops) without requiring cloud connectivity:
 
-**Impact:** False rejections of real patient scans during a live demo would be catastrophic.
-
-**Fix (Week 3, P2):** Add a confidence-based OOD fallback: if the model's top-class softmax probability is below 0.40, flag it as "Low Confidence — Possible Non-Fundus Image" rather than hard-rejecting. Keep the heuristic checks as warnings, not blockers.
-
----
-
-### MEDIUM: Model Architecture Defined in 3 Different Files
-
-**Problem:** `build_model()` is copy-pasted identically in `train_model.py`, `evaluate_model.py`, `messidor_test.py`, and `inference.py`. If anyone changes the fc layer structure in one file but not the others, the `.pth` weights will fail to load with a cryptic `state_dict` key mismatch error.
-
-**Fix (Week 1, P1):** Extract `build_model()` into a single shared file: `ml_script/model.py`. All scripts import from it.
-
----
-
-### MEDIUM: No CLAHE During Evaluation
-
-**Problem:** `evaluate_model.py` uses plain `val_transforms` (resize + normalize). If training is updated to include CLAHE (per the fix above), evaluation must also include it. Currently it does not.
-
-**Fix:** `evaluate_model.py` must import and apply the exact same preprocessing chain used in training.
-
----
-
-### LOW: Grad-CAM Hook Leak
-
-**Problem:** `GradCAMSimple.__init__` calls `register_forward_hook()` and `register_full_backward_hook()` but never removes them. On repeated calls to `run_inference()`, hooks accumulate on the singleton model, causing memory leaks and increasingly slow inference.
-
-**Fix (Week 2, P2):** Store hook handles and call `.remove()` after each Grad-CAM generation, or instantiate `GradCAMSimple` once alongside the singleton model.
-
----
-
-### LOW: `messidor_test.py` Cannot Compute Real Accuracy
-
-**Problem:** The MESSIDOR-2 images in the dataset folder have no per-image grade labels. The script compares predicted prevalence against a published aggregate number (46.5%). This is not a real validation — it cannot compute sensitivity, specificity, or AUC.
-
-**Fix:** Document this explicitly. Label this test as "Distribution Plausibility Check" — not "External Validation."
-
----
-
-## PART B — Rewritten Implementation Blueprint
-
-### Team Roles
-
-| ID | Role | Owns | Core Skills |
-|----|------|------|-------------|
-| **P1** | ML Engineer | `ml_script/` | Python, PyTorch, OpenCV, scikit-learn |
-| **P2** | Backend Engineer | `Backend/` | Python, FastAPI, REST APIs, OpenCV |
-| **P3** | Frontend Engineer | `Frontend/retinascan-app/` | React, CSS, Vite, JavaScript |
-
----
-
-### Repository File Structure
-
-Every file is tagged with its owner (`[P1]`, `[P2]`, `[P3]`) and a description of exactly what it does.
-
-```text
-RetinascanXAI/
-│
-├── README.md                              [All]  Project overview, setup guide, API reference
-├── .gitignore                             [All]  Ignores .pth, node_modules, DataSet/, __pycache__/
-├── model_link.txt                         [P1]   Google Drive URL to download the trained .pth file
-│
-├── install_deps.bat                       [P2]   Installs all Python + Node dependencies in one click
-├── start_backend.bat                      [P2]   Starts FastAPI on localhost:8000
-├── start_frontend.bat                     [P3]   Starts Vite dev server on localhost:5173
-│
-├── ml_script/                             ← P1 OWNS THIS ENTIRE FOLDER
-│   ├── model.py                           [P1]   SINGLE source of truth for build_model()
-│   ├── preprocess.py                      [P1]   SINGLE source of truth for CLAHE + Ben Graham + transforms
-│   ├── split_dataset.py                   [P1]   Runs ONCE to create train_ids.csv + val_ids.csv
-│   ├── train_ids.csv                      [P1]   Frozen training image IDs (output of split_dataset.py)
-│   ├── val_ids.csv                        [P1]   Frozen validation image IDs (output of split_dataset.py)
-│   ├── train_model.py                     [P1]   ResNet-50 training loop using frozen splits + CLAHE
-│   ├── evaluate_model.py                  [P1]   Runs on val set, outputs sensitivity/specificity/AUC
-│   ├── messidor_test.py                   [P1]   Distribution plausibility check on MESSIDOR-2
-│   ├── visualise_metrics.py               [P1]   Generates ROC curve, confusion matrix PNGs
-│   ├── evaluation_report.json             [P1]   Final locked metrics JSON
-│   └── matlab/
-│       ├── segment_lesions.m              [P1]   MATLAB lesion segmentation (MathWorks Toolbox)
-│       └── README.md                      [P1]   Instructions for running MATLAB scripts
-│
-├── Backend/                               ← P2 OWNS THIS ENTIRE FOLDER
-│   ├── main.py                            [P2]   FastAPI server: /upload, /health, /eval-report
-│   ├── inference.py                       [P2]   Model load + CLAHE + Grad-CAM + OOD check
-│   ├── requirements.txt                   [P2]   All Python dependencies
-│   └── retinascan_resnet50.pth            [P1→P2] Trained weights (gitignored, from Drive)
-│
-└── Frontend/retinascan-app/               ← P3 OWNS THIS ENTIRE FOLDER
-    ├── index.html                         [P3]   HTML entry point
-    ├── vite.config.js                     [P3]   Vite build config
-    ├── package.json                       [P3]   Node dependencies
-    ├── public/images/                     [P3]   Static demo fundus images + heatmaps
-    └── src/
-        ├── App.jsx                        [P3]   Navigation state machine + API fetch
-        ├── data.js                        [P3]   Mock patient data (schema is FROZEN)
-        ├── index.css                      [P3]   Global design tokens
-        └── components/
-            ├── Home.jsx                   [P3]   Landing screen with 3 module cards
-            ├── Upload.jsx                 [P3]   2-column clinical intake form
-            ├── QualityCheck.jsx           [P3]   Animated IQA gate (3 progress bars)
-            ├── Processing.jsx             [P3]   Inference animation (conic ring + checklist)
-            ├── Results.jsx                [P3]   Clinical results viewer
-            ├── Canvas.jsx                 [P3]   PACS workstation (lesion pins + Grad-CAM)
-            ├── Queue.jsx                  [P3]   Patient review queue
-            ├── Referral.jsx               [P3]   Auto-generated referral letter
-            └── Admin.jsx                  [P3]   Analytics dashboard
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        CLIENT / BROWSER RUNTIME                        │
+│                                                                        │
+│  React 18 + Vite (SPA) · Tailwind & Custom Design System               │
+│  ├── Doctor PACS Console (Zoom, Pan, ETDRS Grid, Red-Free Filter)      │
+│  ├── In-Silico Laser Counterfactual Studio (Canvas 2D / Event Hooks)   │
+│  ├── ASHA Patient Counselor (Web Speech API TTS, Multi-Language Dics)  │
+│  └── Storage Engine (HTML5 LocalStorage Intake Persistence)            │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ HTTP / JSON (REST)
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                        FASTAPI BACKEND RUNTIME                         │
+│                                                                        │
+│  Asynchronous ASGI Web Engine (Uvicorn / Port 8000)                    │
+│  ├── Concurrency Lock (asyncio.Lock — Single-threaded Inference Cap)   │
+│  ├── Static File Server (FastAPI StaticFiles — Generated Heatmaps)     │
+│  └── Multi-Endpoint Routing Controller (/upload, /counterfactual, etc) │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ Memory Buffers
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                       DEEP LEARNING & CV ENGINE                        │
+│                                                                        │
+│  PyTorch 2.2+ (CPU / CUDA 12.1 Auto-Detection)                         │
+│  ├── ResNet-50 v2 Backbone (Multi-Center Trained: APTOS + MESSIDOR)    │
+│  ├── Grad-CAM Engine (layer4[-1] gradient hooks with auto-cleanup)     │
+│  ├── Morphological Lesion Segmentor (OpenCV Otsu, Black-hat, Top-hat)  │
+│  ├── In-Silico Biophysical Inpainting Engine (Fast Marching Telea)     │
+│  └── ETDRS 9-Zone Macular Spatial Geometry & CSME Risk Engine          │
+└────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-### API Integration Contract
+## 3. Core Modules & Engineering Specifications
 
-P2 and P3 agree on this on Day 1. Never break it.
+### 3.1 Unified Model Architecture (`ml_script/model.py`)
+`build_model()` is defined exclusively here:
+```python
+def build_model(num_classes: int = 5) -> nn.Module:
+    model = models.resnet50(weights=models.ResNet50_Weights.DEFAULT)
+    in_features = model.fc.in_features  # 2048 for ResNet-50
+    model.fc = nn.Sequential(
+        nn.Dropout(0.4),
+        nn.Linear(in_features, 512),
+        nn.ReLU(),
+        nn.Dropout(0.3),
+        nn.Linear(512, num_classes),
+    )
+    return model
+```
 
-#### `POST /upload` (FormData with `file` field)
+### 3.2 Unified Image Transforms (`ml_script/preprocess.py`)
+- **Training Pipeline (`train_transforms`):**
+  Resize to $256 \times 256 \to$ RandomCrop($224 \times 224$) $\to$ Horizontal & Vertical Flips $\to$ Rotation($20^\circ$) $\to$ ColorJitter $\to$ ImageNet Normalization.
+- **Validation & Live Inference Pipeline (`val_transforms`):**
+  Direct resize to $224 \times 224 \to$ ToTensor $\to$ ImageNet Normalization. Ensures live inference strictly mirrors the validation distribution.
 
-**Success:** `{ "severity": 2, "confidence": 96.4, "label": "Moderate NPDR", "action": "Specialist Triage Required", "heatmap_url": "/images/heatmap_live_abc123.jpg", "all_probs": [0.01, 0.05, 0.72, 0.14, 0.08], "mode": "real" }`
+### 3.3 Multi-Center Training Pipeline (`ml_script/train_classifier_v2.py`)
+- **Datasets Combined:** APTOS 2019 ($3,662$ images) + MESSIDOR-2 ($1,744$ gradable images) = $5,406$ total images.
+- **Data Partitions:** $4,324$ training images ($80\%$) and $1,082$ held-out validation images ($20\%$).
+- **Optimization:** Mixed-precision training (torch.cuda.amp), AdamW optimizer ($\text{lr} = 10^{-4}$, $\text{weight\_decay} = 10^{-4}$), checkpointing every 5 epochs.
+- **Held-Out Validation Results (`evaluation_report_v2.json`):**
+  - **Sensitivity (Referable DR):** **93.32%** (363 / 389 positive cases detected).
+  - **Specificity (Referable DR):** **86.15%** (597 / 693 non-referable cases cleared).
+  - **AUC-ROC:** **0.9702**.
+  - **Negative Predictive Value (NPV):** **95.83%**.
+  - **Optimal Decision Threshold:** **`0.1657`** via Youden's J Index.
 
-**OOD Rejection:** `{ "mode": "error", "error": "Retinal pigment signature not found." }`
+### 3.4 In-Silico Laser Counterfactual XAI (`Backend/counterfactual.py`)
+Enables clinicians to test whether suspect lesions causally caused the deep network's prediction:
+1. Clinician selects lesion markers or freehand coordinates.
+2. System builds an ablation mask $M$.
+3. Telea Fast Marching inpainting (`cv2.inpaint`) reconstructs healthy retinal pigment epithelium (RPE) with argon photocoagulation blanching rings.
+4. ResNet-50 v2 executes a live forward pass on the treated scan.
+5. Computes probability drop $\Delta P = P_{\text{treated}}[g] - P_{\text{baseline}}[g]$ and Causal Attribution Score (CAS).
 
-**Mock Fallback:** `{ "severity": 2, "confidence": 96.4, "label": "Moderate NPDR", "heatmap_url": "/images/heatmap_2_od.jpg", "mode": "mock" }`
+### 3.5 Automated ETDRS 9-Zone Macular Grid & CSME Profiler (`Backend/etdrs.py`)
+- Digitizes the Early Treatment Diabetic Retinopathy Study 9-zone layout.
+- Spatial Calibration: $1\%$ coordinate space on a 45° fundus scan corresponds to **$150\,\mu m$**.
+- Central Foveal Subfield (CSF): Diameter $1\,\text{mm}$ ($r = 500\,\mu m$).
+- Inner Ring: Diameter $3\,\text{mm}$ ($r = 1500\,\mu m$: IS, IN, II, IT).
+- Outer Ring: Diameter $6\,\text{mm}$ ($r = 3000\,\mu m$: OS, ON, OI, OT).
+- Automatic Nasal/Temporal laterality mirroring between OD (Right Eye) and OS (Left Eye).
+- CSME Risk Engine: Flags **High Risk (Center-Involved)** if hard exudates are within $500\,\mu m$ of fovea, mandating immediate 7–14 day specialist OCT referral.
 
-#### `GET /health` → `{ "status": "ok", "model_loaded": true }`
-#### `GET /eval-report` → Returns `evaluation_report.json` contents
-
----
-
-### WEEK 1 — Foundation & Architecture Fixes (All Independent)
-
-#### P1 — ML Engineer
-
-| Day | Task | File | Done When |
-|-----|------|------|-----------|
-| 1 | Extract `build_model()` into shared module | `ml_script/model.py` | All scripts import from here |
-| 1 | Extract CLAHE + Ben Graham + transforms | `ml_script/preprocess.py` | Single preprocessing source of truth |
-| 2 | Write dataset splitter, save frozen ID lists | `ml_script/split_dataset.py` | `train_ids.csv` + `val_ids.csv` exist |
-| 3–5 | Update `train_model.py`: frozen splits + CLAHE transforms | `ml_script/train_model.py` | Trains 1 epoch without crashing |
-| 5 | Start full 20-epoch training run | `.pth` file | Training running overnight |
-
-#### P2 — Backend Engineer
-
-| Day | Task | File | Done When |
-|-----|------|------|-----------|
-| 1 | Set up FastAPI with CORS + static file serving | `Backend/main.py` | `curl localhost:8000/health` works |
-| 2 | Implement `/upload` in MOCK mode | `Backend/main.py` | Returns hardcoded JSON |
-| 3 | Write `requirements.txt` | `Backend/requirements.txt` | `pip install -r` succeeds |
-| 4 | Write `.bat` scripts | `start_backend.bat`, `install_deps.bat` | Double-click works |
-| 5 | Test frontend can fetch from `/upload` | — | No CORS errors |
-
-#### P3 — Frontend Engineer
-
-| Day | Task | File | Done When |
-|-----|------|------|-----------|
-| 1 | Initialize Vite + React, set up design tokens | `index.css`, `package.json` | `npm run dev` works |
-| 2 | Build `data.js` with mock patients | `data.js` | Exports all mock data |
-| 3 | Build `Home.jsx` landing screen | `Home.jsx` | Renders in browser |
-| 4 | Build `Upload.jsx` intake form | `Upload.jsx` | Demo cards auto-fill form |
-| 5 | Wire navigation in `App.jsx` | `App.jsx` | Screen transitions work |
-
----
-
-### WEEK 2 — Core Pipeline (Soft Dependency: P1 → P2)
-
-#### P1 — ML Engineer
-
-| Day | Task | File | Done When |
-|-----|------|------|-----------|
-| 1–2 | Monitor training, fix divergence | `train_model.py` | val_acc > 75% |
-| 3 | Upload `.pth` to Drive, update link | `model_link.txt` | P2 can download |
-| 4 | Write evaluation with Youden's J threshold | `evaluate_model.py` | `evaluation_report.json` with sens ≥ 90% |
-| 5 | Write ROC + confusion matrix plotter | `visualise_metrics.py` | PNG charts saved |
-
-#### P2 — Backend Engineer
-
-| Day | Task | File | Done When |
-|-----|------|------|-----------|
-| 1 | Write `inference.py` (preprocessing + Grad-CAM + OOD) | `Backend/inference.py` | `run_inference()` callable |
-| 2 | Wire real inference into `/upload` | `Backend/main.py` | Returns real grade |
-| 3 | Fix Grad-CAM hook leak | `Backend/inference.py` | No memory growth across 20 uploads |
-| 4 | Add `/eval-report` endpoint | `Backend/main.py` | Returns JSON |
-| 5 | Download `.pth`, test real inference | — | Real heatmap generated |
-
-> **P2 uses random weights for Days 1–4. Only Day 5 needs P1's `.pth`.**
-
-#### P3 — Frontend Engineer
-
-| Day | Task | File | Done When |
-|-----|------|------|-----------|
-| 1 | Build `QualityCheck.jsx` (3 animated bars) | `QualityCheck.jsx` | Animation plays, auto-advances |
-| 2 | Build `Processing.jsx` (conic ring + checklist) | `Processing.jsx` | Ring spins, steps resolve |
-| 3 | Build `Results.jsx` (severity + probability bars) | `Results.jsx` | Shows mock results |
-| 4 | Wire full flow: Upload → IQA → Processing → Results | `App.jsx` | Demo flow runs |
-| 5 | Polish animations | — | Smooth and demo-ready |
+### 3.6 Anatomical Lesion Segmentation (`Backend/segment.py`)
+- Retinal FOV boundary masking ($15\times 15$ elliptical structuring element).
+- Optic Disc localization & $55\,\text{px}$ exclusion zone to avoid false exudate triggers.
+- Retinal vascular tree extraction & $5\,\text{px}$ dilation to prevent capillary junctions from registering as microaneurysms.
+- Connected component morphological analysis:
+  - Microaneurysms: Area $8-120\,\text{px}^2$, circularity $c \ge 0.55$.
+  - Hemorrhages: Area $120-2500\,\text{px}^2$, circularity $c \ge 0.20$.
+  - Hard Exudates: Green channel top-hat filtering, area $15-3000\,\text{px}^2$.
+- Grade-Aware Harmonization: Enforces zero lesions on Grade 0 (No DR) scans per ICDR standard.
 
 ---
 
-### WEEK 3 — Advanced Features & Integration
+## 4. Developer Setup & Operations Runbook
 
-#### P1 — ML Engineer
+### 4.1 Prerequisites
+- **Operating System:** Windows 10/11, Linux, or macOS
+- **Python:** Version 3.10 or 3.11
+- **Node.js:** Version 18.0 or higher
+- **Hardware:** Standard CPU (min 4 cores, 8GB RAM) or NVIDIA GPU with CUDA 12.1+
 
-| Day | Task | File | Done When |
-|-----|------|------|-----------|
-| 1–2 | Write MESSIDOR distribution check | `messidor_test.py` | `cross_dataset_report.json` generated |
-| 3 | Run MATLAB `segment_lesions.m` (if available) | `matlab/segment_lesions.m` | Lesion masks for 5 samples |
-| 4–5 | Prepare presentation slides with metrics | Slides | All numbers ready for judges |
+### 4.2 Installation via Automated Batch Scripts (Windows)
+Double-click `install_deps.bat` or run:
+```bat
+REM Step 1: Install Python dependencies
+cd Backend
+pip install -r requirements.txt
 
-#### P2 — Backend Engineer
+REM Step 2: Install Frontend dependencies
+cd ..\Frontend\retinascan-app
+npm install
+```
 
-| Day | Task | File | Done When |
-|-----|------|------|-----------|
-| 1 | Soften OOD: low-confidence warning, not hard reject | `Backend/inference.py` | Dim fundus passes, watermelon rejected |
-| 2 | Add `asyncio.Lock` inference guard | `Backend/main.py` | 5 concurrent uploads don't crash |
-| 3 | Verify static heatmap image serving | `Backend/main.py` | `<img src={heatmapUrl}>` works |
-| 4–5 | **Integration with P3**: Test real API from frontend | — | Full connected flow works |
+### 4.3 Running the Services
 
-#### P3 — Frontend Engineer
+#### Option A: One-Click Batch Launchers
+- Backend: Double-click `start_backend.bat` (launches FastAPI on `http://localhost:8000`).
+- Frontend: Double-click `start_frontend.bat` (launches Vite on `http://localhost:5173`).
 
-| Day | Task | File | Done When |
-|-----|------|------|-----------|
-| 1 | Build `Canvas.jsx` (PACS workstation + lesion pins) | `Canvas.jsx` | Pins render with tooltips |
-| 2 | Build `Queue.jsx` (review queue) | `Queue.jsx` | Patient list with severity badges |
-| 3 | Wire `App.jsx` to `fetch()` P2's `/upload` | `App.jsx` | Real API populates Results |
-| 4 | Handle OOD error response (alert + redirect) | `App.jsx` | Rejection shows message |
-| 5 | Test full connected flow end-to-end | — | Real image → real grade → real heatmap |
+#### Option B: Manual CLI Commands
+**Terminal 1 (Backend):**
+```bash
+cd Backend
+python main.py
+```
+*Verify output:*
+```
+[OK] Real ResNet-50 model found (retinascan_resnet50_v2.pth) - live inference + segmentation enabled.
+Starting FastAPI on http://localhost:8000
+```
 
----
-
-### WEEK 4 — Polish, Hardening & Demo Prep
-
-#### P1 — ML Engineer
-
-| Day | Task | Done When |
-|-----|------|-----------|
-| 1 | Lock `evaluation_report.json` — no more changes | File committed and frozen |
-| 2–3 | Prepare judge Q&A answers | Can answer any model question instantly |
-| 4–5 | Full demo rehearsal × 5 | No crashes or unexpected results |
-
-#### P2 — Backend Engineer
-
-| Day | Task | Done When |
-|-----|------|-----------|
-| 1 | Stress test: 10 rapid uploads | Server survives burst load |
-| 2 | Finalize `start_backend.bat` (UTF-8 encoding fix) | Double-click works |
-| 3–5 | Demo rehearsal with P3 | End-to-end works 5/5 times |
-
-#### P3 — Frontend Engineer
-
-| Day | Task | File | Done When |
-|-----|------|------|-----------|
-| 1 | Build `Referral.jsx` | `Referral.jsx` | Referral letter renders |
-| 2 | Build `Admin.jsx` | `Admin.jsx` | Charts render |
-| 3 | Add `Ctrl+Shift+R` demo reset | `App.jsx` | Instant reset works |
-| 4 | Finalize `start_frontend.bat` | `start_frontend.bat` | Double-click works |
-| 5 | Full 10-minute demo rehearsal | — | Flawless flow |
+**Terminal 2 (Frontend):**
+```bash
+cd Frontend/retinascan-app
+npm run dev
+```
+*Open your browser at:* `http://localhost:5173`
 
 ---
 
-### Ground Rules
+## 5. Verification & Health Check Endpoints
 
-| # | Rule | Why |
-|---|------|-----|
-| 1 | **`data.js` schema is frozen** | P2's API keys must match P3's expected keys |
-| 2 | **`model.py` is the ONLY place `build_model()` exists** | Prevents state_dict key mismatches |
-| 3 | **`preprocess.py` is the ONLY place transforms are defined** | Prevents train/inference mismatch |
-| 4 | **Model weights on Google Drive, not Git** | `.pth` is 100MB+ |
-| 5 | **Commit per feature, not per day** | Branches: `ml/training`, `backend/inference`, `frontend/ui` |
-| 6 | **P2 always returns valid JSON on error** | Frontend never sees Python traceback |
-| 7 | **Demo threshold is `0.1162` — locked after Week 2** | Produces 97.6% sensitivity |
-| 8 | **`train_ids.csv` and `val_ids.csv` are NEVER regenerated** | Prevents data leakage |
+| Command | Expected Output |
+| :--- | :--- |
+| `curl http://localhost:8000/health` | `{"status":"ok","model_loaded":true,"inference_mode":"real","api_version":"3.0"}` |
+| `curl http://localhost:8000/eval-report` | Full JSON containing locked multi-center validation metrics |
+| `Ctrl + Shift + R` (in browser) | Instantly resets application state and returns to Home view |
+
+---
+
+## 6. Coding Standards & Ground Rules
+
+1. **`ml_script/model.py` is the ONLY place `build_model()` is defined.** Never duplicate model construction in scripts.
+2. **`ml_script/preprocess.py` is the ONLY place image transforms are defined.**
+3. **`train_ids.csv` and `val_ids_v2.csv` are frozen.** Never re-generate splits during model evaluation to prevent data leakage.
+4. **All backend errors must return structured JSON.** Never return raw Python tracebacks to the client.
+5. **Inference must remain single-threaded via `asyncio.Lock()`.** Guarantees peak RAM usage remains under 3GB on clinic laptops.
+6. **Patient data sovereignty is absolute.** All processing executes locally on the edge device; zero health data or patient fundus scans leave the premises.
