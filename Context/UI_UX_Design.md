@@ -1,216 +1,111 @@
 # UI/UX Design Document
 
-**RetinaScan-XAI: Clinical Interface Design Specification**
+**RetinaScan-XAI: Clinical Workstation & Community Health Interface Design Specification**
 
-Version: 1.0 | Companion: App Flow Document, PRD
-
----
-
-## 1. Design Philosophy
-
-The interface is designed to look like a professional PACS (Picture Archiving and Communication System) workstation -- not a student project. The aesthetic is inspired by high-end medical imaging software used in hospital radiology departments.
-
-**Core Principles:**
-- Dark-navy background with teal/cyan accents for a clinical, premium feel
-- Glass-morphism panels with backdrop-blur and subtle borders
-- Tabular figures for numerical data (monospaced digits)
-- Color-coded severity using a consistent palette across all screens
-- Micro-animations for loading states and transitions
-- Zero clutter -- every element serves a clinical purpose
+**Version:** 3.0 | **Companion:** App Flow Document v3.0, PRD v3.0 | **Status:** PRODUCTION
 
 ---
 
-## 2. Design Tokens
+## 1. Design Philosophy & Aesthetic Strategy
 
-### Colors
+RetinaScan-XAI unifies two distinct clinical worlds into one seamless software platform:
+1. **The Tertiary Doctor Console:** A high-precision PACS (Picture Archiving and Communication System) environment for ophthalmologists, featuring sub-pixel lesion overlays, zoom/pan ergonomics, and laser simulation.
+2. **The Community ASHA Counseling Hub:** A warm, compassionate, culturally accessible vernacular portal using rural health pictograms and spoken regional audio to empower patients with low literacy.
 
+Rather than generic dark modes or cold hospital dashboards, the interface is styled around the **Earthy Botanical (`EB`) & Clinical Hospital Design System**: a calming, dignified palette combining deep forest greens, soft sage, warm ivory, and crisp clinical accents that minimize visual fatigue during long screening shifts.
+
+---
+
+## 2. Design Tokens & Palette
+
+### 2.1 The Clinical Nature & Neutral Tokens (`EB` Tokens)
 ```css
---bg-primary:     #030c14;    /* Deep navy background */
---bg-surface:     #0a1628;    /* Card/panel background */
---bg-glass:       rgba(10, 22, 40, 0.7);  /* Glass-morphism panels */
---border-glass:   rgba(255, 255, 255, 0.06);
---accent-teal:    #00d4aa;    /* Primary accent, buttons, links */
---accent-cyan:    #00b4d8;    /* Secondary accent */
---text-primary:   #e8f4f8;    /* Main text */
---text-secondary: #7a8ba0;    /* Muted labels */
---text-dim:       #4a5568;    /* Disabled/placeholder text */
+/* Core Surfaces & Typography */
+--eb-forest:      #25351A;    /* Primary brand, headers, active steppers */
+--eb-olive:       #4C3D12;    /* Secondary headers, accents */
+--eb-ivory:       #F4F4E9;    /* Calming workstation canvas background */
+--eb-sage:        #7D8960;    /* Muted brand accents, borders */
+--eb-celery:      #E3EBC9;    /* Highlight pills, subtle active states */
+--eb-grayGreen:   #D0D4C2;    /* Dividers, inactive border strokes */
+--eb-ink:         #171812;    /* Primary text (high-contrast clinical black) */
+--eb-inkMuted:    #858575;    /* Secondary captions, metadata, units */
+--eb-hairline:    rgba(76, 61, 18, 0.15); /* Delicate structural borders */
 ```
 
-### Severity Colors
+### 2.2 ICDR Severity Diagnostic Color Tokens
+Consistent across all screens, badges, probability bars, and triage cards:
 
-```css
---severity-0:     #10b981;    /* Green -- No DR */
---severity-1:     #f59e0b;    /* Amber -- Mild */
---severity-2:     #f97316;    /* Orange -- Moderate */
---severity-3:     #ef4444;    /* Red -- Severe */
---severity-4:     #dc2626;    /* Dark Red -- Proliferative */
-```
+| Grade | Clinical Label | Primary Hex | Soft Background | Border Token |
+| :---: | :--- | :---: | :---: | :---: |
+| **0** | No Apparent DR | `#22c55e` (Emerald) | `rgba(34, 197, 94, 0.10)` | `rgba(34, 197, 94, 0.30)` |
+| **1** | Mild NPDR | `#84cc16` (Lime) | `rgba(132, 204, 22, 0.10)` | `rgba(132, 204, 22, 0.30)` |
+| **2** | Moderate NPDR | `#f59e0b` (Amber) | `rgba(245, 158, 11, 0.12)` | `rgba(245, 158, 11, 0.35)` |
+| **3** | Severe NPDR | `#ea580c` (Orange) | `rgba(234, 88, 12, 0.12)` | `rgba(234, 88, 12, 0.35)` |
+| **4** | Proliferative DR | `#dc2626` (Red) | `rgba(220, 38, 38, 0.12)` | `rgba(220, 38, 38, 0.35)` |
 
-### Typography
-
-```css
---font-body:      'Inter', -apple-system, sans-serif;
---font-mono:      'JetBrains Mono', 'Fira Code', monospace;
---font-tabular:   font-variant-numeric: tabular-nums;
-```
-
-### Spacing & Sizing
-
-```css
---radius-sm:      6px;
---radius-md:      12px;
---radius-lg:      20px;
---shadow-glass:   0 8px 32px rgba(0, 0, 0, 0.3);
---blur-glass:     backdrop-filter: blur(12px);
-```
+### 2.3 Pathological Lesion Marker Tokens
+Used in the diagnostic findings table, pin overlays, and anatomical quadrant radar:
+- **Microaneurysms (MA):** `#ef4444` (Vivid Crimson Dot, $8-120\,\text{px}^2$)
+- **Hemorrhages (HE):** `#f97316` (Deep Orange Flame/Blot, $120-2500\,\text{px}^2$)
+- **Hard Exudates (EX):** `#eab308` (Bright Gold Lipid Plaque, $15-3000\,\text{px}^2$)
+- **Argon Laser Photocoagulation Burns:** `#10b981` (Therapeutic Green Blanching Rings)
 
 ---
 
-## 3. Component Design Specs
+## 3. Optical Ergonomics & Layout Calibration
 
-### 3.1 Header Bar
-- Height: 56px
-- Background: `--bg-surface` with bottom border
-- Left: RetinaScan-XAI logo + "Clinical Edition" tag
-- Right: System status indicator (green dot = backend connected)
+### 3.1 Dynamic Aspect-Ratio Letterbox Calibration (`imgBounds`)
+Standard web viewports using `object-fit: cover` or rigid circular masks cause severe diagnostic errors by cropping up to 34% of wide-angle camera sensors (1.51:1 ratio), obscuring the optic disc and nasal arcades.
 
-### 3.2 Severity Badge
-- Rounded pill shape, 48px height
-- Background: severity color with 15% opacity
-- Border: 2px solid severity color
-- Text: severity level number + label in white bold
-- Used in: Results, Queue, Canvas
+**The Solution:**
+All diagnostic viewports in [Results.jsx](file:///d:/AntiGravity%20projects/MP-RetinascanXAI/Frontend/retinascan-app/src/components/Results.jsx) and [Canvas.jsx](file:///d:/AntiGravity%20projects/MP-RetinascanXAI/Frontend/retinascan-app/src/components/Canvas.jsx) compute a reactive `imgBounds` bounding box based on the image's intrinsic aspect ratio:
+```javascript
+const imgBounds = useMemo(() => {
+  if (imgAspect >= 1) {
+    const heightPct = 100 / imgAspect;
+    const topPct = (100 - heightPct) / 2;
+    return { width: '100%', height: `${heightPct}%`, left: '0%', top: `${topPct}%` };
+  } else {
+    const widthPct = 100 * imgAspect;
+    const leftPct = (100 - widthPct) / 2;
+    return { width: `${widthPct}%`, height: '100%', left: `${leftPct}%`, top: '0%' };
+  }
+}, [imgAspect]);
+```
+This guarantees that **the fundus scan, Grad-CAM overlay, lesion pins, laser spots, and ETDRS concentric rings are nested in an identical coordinate matrix** with zero distortion.
 
-### 3.3 Glass Panel
-- Background: `--bg-glass`
-- Border: 1px solid `--border-glass`
-- Border-radius: `--radius-md`
-- Backdrop-filter: blur(12px)
-- Box-shadow: `--shadow-glass`
-
-### 3.4 Probability Bars
-- 5 horizontal bars, one per ICDR level
-- Width proportional to probability value
-- Color matches severity color
-- Label on left: "Level 0: No DR"
-- Value on right: "72.4%"
-- Font: `--font-mono` with tabular-nums
-
-### 3.5 Lesion Pins (Canvas Screen)
-- Circular markers, 24px diameter
-- Color-coded by lesion type:
-  - Microaneurysm: Red (#ef4444)
-  - Exudate: Yellow (#fbbf24)
-  - Hemorrhage: Orange (#f97316)
-  - Neovascularization: Purple (#a855f7)
-- Numbered sequentially (1, 2, 3...)
-- Hover tooltip shows: lesion type, confidence %, pixel area
-- Pulse animation on hover
-
-### 3.6 Conic Ring Spinner (Processing Screen)
-- 120px diameter ring
-- Background: conic-gradient from teal to transparent
-- CSS animation: rotate 360deg, 1.5s linear infinite
-- Centered on screen with checklist below
+### 3.2 Clinical Optical Zoom & Drag-to-Pan Controls
+To allow ophthalmologists to inspect microvascular details (e.g., $15\,\mu m$ microaneurysms):
+- **Steppers:** Discrete magnification buttons for `1x`, `1.5x`, `2x`, `2.5x`, and `↺ Reset`.
+- **Mouse Wheel Zoom:** Smooth incremental zoom bounded between $100\%$ and $300\%$.
+- **Drag-to-Pan Inspection:** When magnified ($>100\%$), clicking and dragging translates the viewport with an active `grab` / `grabbing` cursor, clamped to the image boundary.
 
 ---
 
-## 4. Screen Layouts
+## 4. Key Workstation Component Specifications
 
-### Home Screen
-```
-+-----------------------------------------------+
-| [Header Bar]                                    |
-+-----------------------------------------------+
-|                                                 |
-|   RetinaScan-XAI                               |
-|   Clinical Decision Support System              |
-|                                                 |
-|   +-------------+  +-------------+  +--------+ |
-|   | New          |  | Review      |  | Admin  | |
-|   | Screening    |  | Queue       |  | Panel  | |
-|   +-------------+  +-------------+  +--------+ |
-|                                                 |
-|   [Status: Backend Connected]                   |
-|   [Stats: 847 screenings | 97.6% sensitivity]  |
-+-----------------------------------------------+
-```
+### 4.1 In-Silico Laser Counterfactual Studio
+- **Laser Mode Toggle:** Activates a crosshair targeting reticle.
+- **Target Selection:** Clicking existing lesion pins or freehand coordinates drops 532nm argon laser blanching circles.
+- **Causal Execution:** An animated button triggers the biophysical inpainting and ResNet-50 re-evaluation.
+- **Comparison Drawer:** Side-by-side split screen showing Baseline vs. Laser Treated fundus, accompanied by a causal attribution metric pill ($\Delta P$ percentage drop and down-staging verdict).
 
-### Upload Screen
-```
-+-----------------------------------------------+
-| [Header Bar]                                    |
-+--------------------+---------------------------+
-| Patient Form       | Demo Presets               |
-| Name: [________]   | [Rajesh K. - Moderate]    |
-| Age:  [________]   | [Priya S. - Severe]       |
-| Sex:  [________]   | [Amit P. - No DR]         |
-| Eye:  [L/R]        | [Sunita D. - Proliferative|
-| Notes: [________]  |                           |
-+--------------------+---------------------------+
-| [Drag & Drop Upload Zone]                       |
-| [============ START SCREENING ===============]  |
-+-----------------------------------------------+
-```
+### 4.2 Automated ETDRS 9-Zone Macular Grid Overlay
+- **Concentric SVG Rings:** Centered over the macula:
+  - Central Subfield (CSF, $1\,\text{mm}$ diameter, radius $500\,\mu m$).
+  - Inner Ring ($3\,\text{mm}$ diameter, radius $1500\,\mu m$).
+  - Outer Ring ($6\,\text{mm}$ diameter, radius $3000\,\mu m$).
+- **Foveal Reticle Calibration:** Draggable central target allowing doctors to recalibrate fovea localization.
+- **High-Risk CSME Alert Pill:** Flashes a distinct terracotta warning badge when exudates are detected within the $500\,\mu m$ center subfield.
 
-### Results Screen
-```
-+-----------------------------------------------+
-| [Header Bar]                                    |
-| [Patient: Rajesh K. | Age: 54 | Right Eye]     |
-+-----------------------------------------------+
-|                                                 |
-|   +-------------------------------------------+ |
-|   |  SEVERITY: Level 2 - Moderate NPDR        | |
-|   |  Confidence: 96.4%                        | |
-|   +-------------------------------------------+ |
-|                                                 |
-|   L0: No DR         |===            |   1.2%   |
-|   L1: Mild           |=====          |   5.3%   |
-|   L2: Moderate        |==================| 72.4%  |
-|   L3: Severe          |=======        | 14.1%   |
-|   L4: Proliferative   |====           |   7.0%   |
-|                                                 |
-|   Action: Specialist Triage Required            |
-|   [========= VIEW DETAILED ANALYSIS =========] |
-+-----------------------------------------------+
-```
+### 4.3 Red-Free (540nm) Optical Filtration
+- Replicates standard ophthalmic slit-lamp green filtration.
+- Enhances contrast between retinal blood vessels / hemorrhages and the background choroid, allowing clinicians to distinguish tiny microaneurysms from retinal pigment alterations.
 
-### Canvas Screen
-```
-+-----------------------------+-------------------+
-| [Fundus Image]              | Findings           |
-|                             | 1. Microaneurysm   |
-|        (1)                  |    Conf: 87%       |
-|    (3)     (2)              | 2. Exudate         |
-|                             |    Conf: 92%       |
-|        (4)                  | 3. Hemorrhage      |
-|                             |    Conf: 78%       |
-| [Toggle: Grad-CAM ON/OFF]  | 4. Microaneurysm   |
-|                             |    Conf: 81%       |
-+-----------------------------+-------------------+
-| [Approve] [Override] [Generate Referral]         |
-+-----------------------------------------------+
-```
-
----
-
-## 5. Responsive Behavior
-
-- Minimum viewport: 1024x768 (clinic laptop screens)
-- No mobile layout required (v1 is desktop-only)
-- Tables collapse to single-column on viewports < 900px
-- Font sizes scale with `clamp()` for readability
-
----
-
-## 6. Animation Specifications
-
-| Animation | Duration | Easing |
-|-----------|----------|--------|
-| Screen transition | 300ms | ease-in-out |
-| QualityCheck bar fill | 1.5s per bar | ease-out |
-| Processing ring spin | 1.5s per rotation | linear, infinite |
-| Checklist item resolve | 800ms | ease-in |
-| Lesion pin pulse | 1s | ease-in-out, infinite (on hover) |
-| Severity badge entrance | 500ms | cubic-bezier(0.34, 1.56, 0.64, 1) |
+### 4.4 ASHA Multilingual Audio & Pictogram Hub
+- **Language Switcher Dropdown:** Fast switching between Hindi, Marathi, Telugu, Tamil, Bengali, and English.
+- **Audio Synthesizer Card:** Plays voice guidance via browser speech synthesis, pronouncing regional names and localized directions.
+- **Dietary & Lifestyle Pictograms:**
+  - Recommended Foods: Spinach, Fenugreek, Lentils, Bitter Gourd (with clean icons).
+  - Prohibited Foods: Sweets, Sugary Tea, Fried Street Foods (with warning badges).
+- **Printable Advice Slip:** High-contrast, single-page print layout formatted for rural patients and family members.
